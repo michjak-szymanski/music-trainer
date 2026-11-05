@@ -1,0 +1,90 @@
+import org.jetbrains.compose.desktop.application.dsl.TargetFormat
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+
+plugins {
+    kotlin("multiplatform")
+    kotlin("plugin.serialization")
+    id("com.android.kotlin.multiplatform.library")
+    id("org.jetbrains.compose")
+    id("org.jetbrains.kotlin.plugin.compose")
+}
+
+val composeVersion = "1.12.1"
+val coroutinesVersion = "1.11.0"
+
+kotlin {
+    jvm("desktop") {
+        compilerOptions { jvmTarget.set(JvmTarget.JVM_17) }
+    }
+
+    androidLibrary {
+        namespace = "com.musictrainer.shared"
+        compileSdk = 37
+        minSdk = 29
+        androidResources { enable = true }
+        compilerOptions { jvmTarget.set(JvmTarget.JVM_17) }
+    }
+
+    sourceSets {
+        commonMain.dependencies {
+            implementation("org.jetbrains.compose.runtime:runtime:$composeVersion")
+            implementation("org.jetbrains.compose.foundation:foundation:$composeVersion")
+            implementation("org.jetbrains.compose.ui:ui:$composeVersion")
+            implementation("org.jetbrains.compose.components:components-resources:$composeVersion")
+            implementation("org.jetbrains.compose.material3:material3:1.9.0")
+            implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.12.0")
+            implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:$coroutinesVersion")
+        }
+        commonTest.dependencies {
+            implementation(kotlin("test"))
+            implementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:$coroutinesVersion")
+        }
+        val desktopMain by getting {
+            dependencies {
+                implementation(compose.desktop.currentOs)
+                implementation("org.jetbrains.kotlinx:kotlinx-coroutines-swing:$coroutinesVersion")
+            }
+        }
+        androidMain.dependencies {
+            implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:$coroutinesVersion")
+        }
+    }
+}
+
+compose.resources {
+    packageOfResClass = "com.musictrainer.resources"
+}
+
+compose.desktop {
+    application {
+        mainClass = "com.musictrainer.MainKt"
+        nativeDistributions {
+            targetFormats(TargetFormat.Msi, TargetFormat.Deb, TargetFormat.Rpm)
+            packageName = "MusicTrainer"
+            packageVersion = "1.0.0"
+            description = "Sight-reading trainer for MIDI keyboards"
+            vendor = "Music Trainer"
+            licenseFile.set(rootProject.file("LICENSE"))
+            // From `./gradlew :shared:suggestRuntimeModules`; java.desktop provides javax.sound.
+            modules("java.desktop", "java.instrument", "jdk.unsupported")
+            windows {
+                menu = true
+                menuGroup = "Music Trainer"
+                shortcut = true
+                dirChooser = true
+                perUserInstall = true
+                // Keep constant across versions so new MSIs upgrade the installed app.
+                upgradeUuid = "666f7322-8ac2-4264-b725-ae340e176bd9"
+                iconFile.set(project.file("icons/icon.ico"))
+            }
+            linux {
+                packageName = "music-trainer"
+                shortcut = true
+                menuGroup = "Education;Music"
+                appCategory = "Education"
+                debMaintainer = "michjak.szymanski@gmail.com"
+                iconFile.set(project.file("icons/icon.png"))
+            }
+        }
+    }
+}
