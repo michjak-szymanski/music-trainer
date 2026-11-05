@@ -100,7 +100,7 @@ fun PracticeScreen(state: AppState) {
         }
 
         Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-            StaffView(s, Modifier.fillMaxSize())
+            StaffView(s, Modifier.fillMaxSize(), stripeOpacity = state.settings.stripeOpacity / 100f)
             // Results pop in over the staff with a springy scale + fade.
             androidx.compose.animation.AnimatedVisibility(
                 visible = s.phase == Phase.FINISHED && s.lastRecord != null,
@@ -295,7 +295,7 @@ private fun ResizeHandle(onDrag: (Float) -> Unit, onDragEnd: () -> Unit, onReset
 }
 
 @Composable
-private fun ResultsCard(record: SessionRecord, onRestart: () -> Unit) {
+internal fun ResultsCard(record: SessionRecord, onRestart: () -> Unit) {
     // Score counts up from 0 when the card appears.
     val shownScore = remember(record) { Animatable(0f) }
     LaunchedEffect(record) { shownScore.animateTo(record.score.toFloat(), tween(900, easing = FastOutSlowInEasing)) }
@@ -306,6 +306,7 @@ private fun ResultsCard(record: SessionRecord, onRestart: () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Text("Session complete", style = MaterialTheme.typography.headlineSmall)
+            StarRow(record.stars, size = 40.dp, animate = true)
             Text("${shownScore.value.roundToInt()}", fontSize = 64.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
             Text("points", style = MaterialTheme.typography.labelLarge)
             HorizontalDivider()

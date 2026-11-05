@@ -77,6 +77,17 @@ class TrainerTest {
         assertEquals(score(4, 2), records[0].score)
         assertEquals(30, records[0].score)
         assertEquals(67, records[0].accuracyPercent)
+        assertEquals(2, records[0].stars) // 67% -> 2 stars
+    }
+
+    @Test
+    fun starRatingThresholds() {
+        assertEquals(5, com.musictrainer.model.starRating(19, 1)) // 95%
+        assertEquals(4, com.musictrainer.model.starRating(17, 3)) // 85%
+        assertEquals(3, com.musictrainer.model.starRating(14, 6)) // 70%
+        assertEquals(2, com.musictrainer.model.starRating(10, 10)) // 50%
+        assertEquals(1, com.musictrainer.model.starRating(1, 9))
+        assertEquals(0, com.musictrainer.model.starRating(0, 0))
     }
 
     @Test

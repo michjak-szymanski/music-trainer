@@ -25,6 +25,8 @@ data class Settings(
     val virtualKeySound: Boolean = true,
     /** Height of the on-screen keyboard in dp, set by dragging its handle; 0 = automatic. */
     val pianoHeightDp: Int = 0,
+    /** Opacity of the stripe behind the current note, in percent (0 = no stripe). */
+    val stripeOpacity: Int = 7,
     /** Show the on-screen keyboard at all. */
     val showVirtualKeyboard: Boolean = true,
     /** On-screen keyboard size (a [KeyboardSize] key count); 0 = follow the practice range. */
@@ -67,6 +69,7 @@ data class Settings(
             notesPerClef = notesPerClef.coerceIn(1, 500),
             sessionLength = sessionLength.coerceIn(5, 1000),
             mistakePauseMs = mistakePauseMs.coerceIn(MIN_PAUSE_MS, MAX_PAUSE_MS),
+            stripeOpacity = stripeOpacity.coerceIn(0, MAX_STRIPE_OPACITY),
             virtualKeys = if (KeyboardSize.entries.any { it.keys == virtualKeys }) virtualKeys else 0,
             keyboardLowest = min(keyboardLowest, keyboardHighest).coerceIn(0, 127),
             keyboardHighest = max(keyboardLowest, keyboardHighest).coerceIn(0, 127),
@@ -78,6 +81,7 @@ data class Settings(
         const val MIN_RANGE = 12
         const val MIN_PAUSE_MS = 300
         const val MAX_PAUSE_MS = 5000
+        const val MAX_STRIPE_OPACITY = 50
     }
 }
 

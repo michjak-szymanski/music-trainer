@@ -1,6 +1,11 @@
 package com.musictrainer.ui
 
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.spring
@@ -70,13 +75,22 @@ private fun positionBounds(settings: Settings): Pair<Int, Int> {
 }
 
 @Composable
-fun StaffView(session: SessionController, modifier: Modifier = Modifier) {
+fun StaffView(session: SessionController, modifier: Modifier = Modifier, stripeOpacity: Float = 0.07f) {
     val textMeasurer = rememberTextMeasurer()
     val bravura = FontFamily(Font(Res.font.bravura))
     val settings = session.settings
     val bounds = remember(settings) { positionBounds(settings) }
     val ink = MaterialTheme.colorScheme.onSurface
     val faded = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f)
+    // Reading-position stripe behind the current note: accent while waiting, green/red after answering.
+    val stripeColor by animateColorAsState(
+        when (session.phase) {
+            Phase.CORRECT -> CorrectGreen
+            Phase.WRONG -> WrongRed
+            else -> MaterialTheme.colorScheme.primary
+        },
+        tween(250),
+    )
 
     // Each animation is (re)created at its start value during composition, so the very first
     // frame after a change is already correct (snapping in an effect would lag one frame).
@@ -131,6 +145,20 @@ fun StaffView(session: SessionController, modifier: Modifier = Modifier) {
         fun xBack(k: Int) = noteX - k * spacing + shift // k notes before the current one
         /** Fades notes out as they approach the leading clef. */
         fun alphaAt(x: Float) = ((x - clefAreaEnd - space) / spacing).coerceIn(0f, 1f)
+
+        // Translucent vertical stripe marking the current note's position (fades out at top and bottom).
+        val stripeHalf = space * 1.8f
+        if (stripeOpacity > 0f) drawRoundRect(
+            brush = Brush.verticalGradient(
+                0f to Color.Transparent,
+                0.25f to stripeColor.copy(alpha = stripeOpacity),
+                0.75f to stripeColor.copy(alpha = stripeOpacity),
+                1f to Color.Transparent,
+            ),
+            topLeft = Offset(noteX - stripeHalf, 0f),
+            size = Size(stripeHalf * 2, size.height),
+            cornerRadius = CornerRadius(space * 0.6f),
+        )
 
         // Previously answered notes, newest nearest the current note.
         val trail = session.trail

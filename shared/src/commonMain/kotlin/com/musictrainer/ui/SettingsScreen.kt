@@ -125,6 +125,15 @@ fun SettingsScreen(state: AppState) {
             }
         }
 
+        Section("Staff") {
+            NumberStepper(
+                "Highlight stripe behind the current note: opacity",
+                value = s.stripeOpacity,
+                unit = "%  (0 = off)",
+                step = 1,
+            ) { set(s.copy(stripeOpacity = it)) }
+        }
+
         Section("On-screen keyboard") {
             SwitchRow("Show the on-screen keyboard", s.showVirtualKeyboard) { set(s.copy(showVirtualKeyboard = it)) }
             FlowRow(

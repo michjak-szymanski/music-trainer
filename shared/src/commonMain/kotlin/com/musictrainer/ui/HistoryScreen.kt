@@ -148,6 +148,7 @@ private fun HistoryRow(rec: SessionRecord, date: String) {
                 itemVerticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(date, fontWeight = FontWeight.Medium)
+                StarRow(rec.stars, size = 16.dp)
                 Text("Score ${rec.score}", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                 Text("${rec.accuracyPercent}%", fontWeight = FontWeight.Bold)
                 Text("✓ ${rec.correct}", color = CorrectGreen, fontWeight = FontWeight.Bold)

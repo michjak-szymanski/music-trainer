@@ -5,7 +5,10 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
+import com.musictrainer.resources.Res
+import com.musictrainer.resources.app_icon
 import com.musictrainer.ui.appColorScheme
+import org.jetbrains.compose.resources.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
@@ -55,6 +58,8 @@ fun main() = application {
             exitApplication()
         },
         title = "Music Trainer",
+        // Window/taskbar icon; without it Windows shows the default Java icon.
+        icon = painterResource(Res.drawable.app_icon),
         state = rememberWindowState(width = 1100.dp, height = 780.dp),
     ) {
         val dark = isSystemInDarkTheme()

@@ -7,6 +7,7 @@ Sight-reading trainer for MIDI keyboards: Windows, Linux and Android (Kotlin Mul
 - Waits for a key on your MIDI keyboard. A correct key gets a green pop animation; a wrong key
   turns the note red, shows its name above the staff and shows what you played.
 - Score: ✓ correct, ✗ wrong, accuracy, and points (`10 × correct − 5 × wrong`, never negative).
+- A quick 1–5 star rating on the results card and in History (95%+ = 5, 85%+ = 4, 70%+ = 3, 50%+ = 2).
 - **Restart session** resets the score (an unfinished session with answers is still logged).
 - History of every session with date, score and settings, plus trend charts for score, accuracy
   and response time.
@@ -24,6 +25,7 @@ Sight-reading trainer for MIDI keyboards: Windows, Linux and Android (Kotlin Mul
   with the score counting up, and screens crossfade.
 - The staff scrolls right to left: answered notes stay visible (green = correct, red = wrong with its name),
   with clef-change marks where the clef switched.
+  A translucent vertical stripe marks the current note (opacity adjustable in Settings, 0 = off).
 - On Windows the title bar follows the app's light/dark theme.
 
 ## Install
@@ -32,16 +34,18 @@ Installers are built into `dist/`:
 
 | Platform | File | How to install |
 |---|---|---|
-| Windows 10/11 (x64) | `MusicTrainer-1.2.0.msi` | Double-click. Installs per user (no admin), adds Start-menu and desktop shortcuts. |
-| Debian / Ubuntu / Mint (x64) | `music-trainer_1.2.0_amd64.deb` | `sudo apt install ./music-trainer_1.2.0_amd64.deb`, then start "Music Trainer" from the menu (or `/opt/music-trainer/bin/MusicTrainer`). |
-| Other Linux (x64) | `MusicTrainer-1.2.0-linux-x64.tar.gz` | Extract anywhere and run `MusicTrainer/bin/MusicTrainer`. |
-| Android 10+ | `MusicTrainer-1.2.0-android.apk` | Copy to the phone and open it (allow "install unknown apps"). |
+| Windows 10/11 (x64) | `MusicTrainer-1.2.4.msi` | Double-click. Installs per user (no admin), adds Start-menu and desktop shortcuts; the last page offers "Launch Music Trainer". |
+| Debian / Ubuntu / Mint (x64) | `music-trainer_1.2.4_amd64.deb` | `sudo apt install ./music-trainer_1.2.4_amd64.deb`, then start "Music Trainer" from the menu (or `/opt/music-trainer/bin/MusicTrainer`). |
+| Other Linux (x64) | `MusicTrainer-1.2.4-linux-x64.tar.gz` | Extract anywhere and run `MusicTrainer/bin/MusicTrainer`. |
+| Android 10+ | `MusicTrainer-1.2.4-android.apk` | Copy to the phone and open it (allow "install unknown apps"). |
 
 **Updating:** just install the newer file over the old one. Windows replaces the installed version automatically
 (your settings and history are kept), `apt install` upgrades the .deb, and Android updates the app in place.
 
 All desktop packages bundle their own Java runtime. The APK is signed with the debug key, which is fine
 for side-loading but not for the Play Store.
+
+`packageMsi` also runs `packaging/windows/add-launch-option.ps1`, which adds the launch checkbox to the MSI.
 
 Rebuilding: bump `app.version` in `gradle.properties` first (Windows and Android only upgrade to a higher version), then `./gradlew :shared:packageMsi` on Windows, `./gradlew :shared:packageDeb` on Linux (jpackage can only
 build installers for the OS it runs on), `./gradlew :androidApp:assembleRelease` for the APK.

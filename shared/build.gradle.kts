@@ -56,6 +56,22 @@ compose.resources {
     packageOfResClass = "com.musictrainer.resources"
 }
 
+// After the MSI is built, add a "Launch Music Trainer" checkbox to its final page (Windows only).
+val addMsiLaunchOption by tasks.registering(Exec::class) {
+    description = "Adds a 'Launch Music Trainer' option to the installer's finish page."
+    onlyIf { System.getProperty("os.name").startsWith("Windows") }
+    val msi = layout.buildDirectory.file(
+        "compose/binaries/main/msi/MusicTrainer-${providers.gradleProperty("app.version").get()}.msi"
+    )
+    executable = "powershell"
+    args(
+        "-NoProfile", "-ExecutionPolicy", "Bypass",
+        "-File", rootProject.file("packaging/windows/add-launch-option.ps1").absolutePath,
+        "-Msi", msi.get().asFile.absolutePath,
+    )
+}
+tasks.matching { it.name == "packageMsi" }.configureEach { finalizedBy(addMsiLaunchOption) }
+
 compose.desktop {
     application {
         mainClass = "com.musictrainer.MainKt"
