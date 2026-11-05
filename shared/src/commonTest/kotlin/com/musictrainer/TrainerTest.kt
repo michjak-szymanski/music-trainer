@@ -65,7 +65,7 @@ class TrainerTest {
                 session.onNotePlayed(target)
                 assertEquals(Phase.CORRECT, session.phase)
             }
-            advanceTimeBy(settings.wrongPauseMs.toLong() + 1)
+            advanceTimeBy(settings.mistakePauseMs.toLong() + 1)
             runCurrent()
         }
         assertEquals(listOf(Clef.TREBLE, Clef.TREBLE, Clef.BASS, Clef.BASS, Clef.TREBLE, Clef.TREBLE), clefs)

@@ -43,6 +43,7 @@ kotlin {
             dependencies {
                 implementation(compose.desktop.currentOs)
                 implementation("org.jetbrains.kotlinx:kotlinx-coroutines-swing:$coroutinesVersion")
+                implementation("net.java.dev.jna:jna:5.19.1") // themed Windows title bar
             }
         }
         androidMain.dependencies {
@@ -61,7 +62,8 @@ compose.desktop {
         nativeDistributions {
             targetFormats(TargetFormat.Msi, TargetFormat.Deb, TargetFormat.Rpm)
             packageName = "MusicTrainer"
-            packageVersion = "1.0.0"
+            // Bump for every release: Windows only upgrades when the version is higher.
+            packageVersion = providers.gradleProperty("app.version").get()
             description = "Sight-reading trainer for MIDI keyboards"
             vendor = "Music Trainer"
             licenseFile.set(rootProject.file("LICENSE"))

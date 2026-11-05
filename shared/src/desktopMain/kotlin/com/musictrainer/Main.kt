@@ -1,6 +1,11 @@
 package com.musictrainer
 
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
+import com.musictrainer.ui.appColorScheme
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
@@ -52,6 +57,13 @@ fun main() = application {
         title = "Music Trainer",
         state = rememberWindowState(width = 1100.dp, height = 780.dp),
     ) {
+        val dark = isSystemInDarkTheme()
+        LaunchedEffect(dark) {
+            val colors = appColorScheme(dark)
+            // Noticeably darker than the tab row below it, so the draggable title bar stands out.
+            val caption = lerp(colors.surface, Color.Black, if (dark) 0.6f else 0.12f)
+            WindowsTitleBar.apply(window, dark, caption = caption, text = colors.onSurface)
+        }
         App(platform)
     }
 }

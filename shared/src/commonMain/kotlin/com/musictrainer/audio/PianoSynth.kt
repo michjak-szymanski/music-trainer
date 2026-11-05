@@ -69,13 +69,21 @@ class PianoSynth(private val outputRate: Int = SAMPLE_RATE) {
         private var pos = 0.0
         override fun next(): Double {
             val i = pos.toInt()
-            if (i + 1 >= data.size) {
+            if (i + 2 >= data.size) {
                 done = true
                 return 0.0
             }
-            val frac = pos - i
+            val t = pos - i
             pos += step
-            return (data[i] * (1 - frac) + data[i + 1] * frac) / Short.MAX_VALUE
+            // 4-point cubic Hermite interpolation: much cleaner than linear when repitching.
+            val y0 = (if (i > 0) data[i - 1] else data[i]).toDouble()
+            val y1 = data[i].toDouble()
+            val y2 = data[i + 1].toDouble()
+            val y3 = data[i + 2].toDouble()
+            val c1 = 0.5 * (y2 - y0)
+            val c2 = y0 - 2.5 * y1 + 2 * y2 - 0.5 * y3
+            val c3 = 0.5 * (y3 - y0) + 1.5 * (y1 - y2)
+            return (((c3 * t + c2) * t + c1) * t + y1) / Short.MAX_VALUE
         }
     }
 
@@ -123,8 +131,14 @@ class PianoSynth(private val outputRate: Int = SAMPLE_RATE) {
         for (i in 0 until frames) {
             var sum = 0.0
             for (v in voices) sum += v.next()
-            val s = sum * 0.8
-            val limited = if (abs(s) <= 0.7) s else s / (1 + (abs(s) - 0.7)) // soft limit for chords
+            // Samples are normalized to peak at -3 dBFS, so a single note never reaches the limiter.
+            val a = abs(sum)
+            val limited = if (a <= KNEE) {
+                sum
+            } else { // soft knee for loud chords: approaches 1.0 but never clips
+                val over = (a - KNEE) / (1 - KNEE)
+                (KNEE + (1 - KNEE) * over / (1 + over)) * (if (sum < 0) -1 else 1)
+            }
             out[i] = (limited.coerceIn(-1.0, 1.0) * Short.MAX_VALUE).toInt().toShort()
         }
         voices.removeAll { it.done }
@@ -133,6 +147,7 @@ class PianoSynth(private val outputRate: Int = SAMPLE_RATE) {
     companion object {
         const val SAMPLE_RATE = 44_100
         const val MAX_VOICES = 16
+        private const val KNEE = 0.9
         /** Frames rendered per write: ~6 ms. */
         const val CHUNK = 256
     }

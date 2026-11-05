@@ -1,5 +1,27 @@
 package com.musictrainer.ui
 
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
+import kotlin.math.roundToInt
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -89,17 +111,48 @@ fun SettingsScreen(state: AppState) {
             NumberStepper("Notes per session", s.sessionLength, "notes", step = 5) {
                 set(s.copy(sessionLength = it))
             }
-            NumberStepper("Show correct answer after a mistake for", s.wrongPauseMs / 100, "× 0.1 s", step = 5) {
-                set(s.copy(wrongPauseMs = it * 100))
-            }
+            NumberStepper(
+                "Show the correct answer after a mistake for",
+                value = s.mistakePauseMs / 100,
+                unit = "s",
+                step = 1,
+                format = { "${it / 10}.${it % 10}" },
+                parse = { t -> t.trim().replace(',', '.').toDoubleOrNull()?.let { (it * 10).roundToInt() } },
+            ) { set(s.copy(mistakePauseMs = it * 100)) }
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Switch(checked = s.includeAccidentals, onCheckedChange = { set(s.copy(includeAccidentals = it)) })
                 Text("Include sharps and flats (black keys)")
             }
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Switch(checked = s.virtualKeySound, onCheckedChange = { set(s.copy(virtualKeySound = it)) })
-                Text("Piano sound when tapping on-screen keys")
+        }
+
+        Section("On-screen keyboard") {
+            SwitchRow("Show the on-screen keyboard", s.showVirtualKeyboard) { set(s.copy(showVirtualKeyboard = it)) }
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                itemVerticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("Keys")
+                FilterChip(
+                    selected = s.virtualKeys == 0,
+                    onClick = { set(s.copy(virtualKeys = 0)) },
+                    label = { Text("Auto (practice range)") },
+                )
+                KeyboardSize.entries.forEach { k ->
+                    FilterChip(
+                        selected = s.virtualKeys == k.keys,
+                        onClick = { set(s.copy(virtualKeys = k.keys)) },
+                        label = { Text("${k.keys}") },
+                    )
+                }
             }
+            SwitchRow("Show note names on keys", s.showKeyLabels) { set(s.copy(showKeyLabels = it)) }
+            SwitchRow("Show octave numbers on keys", s.showOctaveNumbers) { set(s.copy(showOctaveNumbers = it)) }
+            SwitchRow("Piano sound when tapping on-screen keys", s.virtualKeySound) { set(s.copy(virtualKeySound = it)) }
+            Text(
+                "These can also be changed from the bar at the bottom of the window.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
 
         Section("MIDI keyboard — ${s.keyboardKeys} keys (${rangeLabel(s.keyboardLowest, s.keyboardHighest)})") {
@@ -164,17 +217,73 @@ private fun NoteStepper(label: String, midi: Int, onChange: (Int) -> Unit) {
     }
 }
 
+@Composable
+private fun SwitchRow(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Switch(checked = checked, onCheckedChange = onChange)
+        Text(label)
+    }
+}
+
+/** − / editable number / + . A typed value is applied on Enter or when the field loses focus. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun NumberStepper(label: String, value: Int, unit: String, step: Int, onChange: (Int) -> Unit) {
+private fun NumberStepper(
+    label: String,
+    value: Int,
+    unit: String,
+    step: Int,
+    format: (Int) -> String = { "$it" },
+    parse: (String) -> Int? = { it.trim().toIntOrNull() },
+    onChange: (Int) -> Unit,
+) {
     FlowRow(
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         itemVerticalAlignment = Alignment.CenterVertically,
     ) {
         Text(label)
         OutlinedButton(onClick = { onChange(value - step) }) { Text("−") }
-        Text("$value", Modifier.widthIn(min = 40.dp), textAlign = TextAlign.Center, fontWeight = FontWeight.Bold)
+        NumberField(value, format, parse, onChange)
         OutlinedButton(onClick = { onChange(value + step) }) { Text("+") }
         Text(unit)
     }
+}
+
+@Composable
+private fun NumberField(value: Int, format: (Int) -> String, parse: (String) -> Int?, onCommit: (Int) -> Unit) {
+    var text by remember(value) { mutableStateOf(format(value)) }
+    val focus = LocalFocusManager.current
+    fun commit() {
+        val parsed = parse(text)
+        text = format(value) // shows the stored (clamped) value if the input was invalid or unchanged
+        if (parsed != null && parsed != value) onCommit(parsed)
+    }
+    val colors = MaterialTheme.colorScheme
+    BasicTextField(
+        value = text,
+        onValueChange = { text = it },
+        singleLine = true,
+        textStyle = MaterialTheme.typography.bodyLarge.copy(
+            color = colors.onSurface,
+            fontWeight = FontWeight.Bold,
+            textAlign = TextAlign.Center,
+        ),
+        cursorBrush = SolidColor(colors.primary),
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Done),
+        keyboardActions = KeyboardActions(onDone = { commit(); focus.clearFocus() }),
+        modifier = Modifier
+            .width(64.dp)
+            .onFocusChanged { if (!it.isFocused) commit() }
+            .onPreviewKeyEvent {
+                if (it.type == KeyEventType.KeyDown && (it.key == Key.Enter || it.key == Key.NumPadEnter)) {
+                    commit(); focus.clearFocus(); true
+                } else false
+            },
+        decorationBox = { inner ->
+            Box(
+                Modifier.border(1.dp, colors.outline, RoundedCornerShape(8.dp)).padding(horizontal = 6.dp, vertical = 8.dp),
+                contentAlignment = Alignment.Center,
+            ) { inner() }
+        },
+    )
 }

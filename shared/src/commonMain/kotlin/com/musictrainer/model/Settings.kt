@@ -16,10 +16,23 @@ data class Settings(
     val sessionLength: Int = 50,
     /** Whether black keys (sharps / flats) are asked. */
     val includeAccidentals: Boolean = false,
-    /** How long the correct answer is shown after a mistake. */
-    val wrongPauseMs: Int = 2000,
+    /**
+     * How long the correct answer is shown after a mistake. (Stored under a new name so that the
+     * old 2 s default saved by earlier versions doesn't carry over.)
+     */
+    val mistakePauseMs: Int = 1000,
     /** Play a piano sound when an on-screen key is tapped. */
     val virtualKeySound: Boolean = true,
+    /** Height of the on-screen keyboard in dp, set by dragging its handle; 0 = automatic. */
+    val pianoHeightDp: Int = 0,
+    /** Show the on-screen keyboard at all. */
+    val showVirtualKeyboard: Boolean = true,
+    /** On-screen keyboard size (a [KeyboardSize] key count); 0 = follow the practice range. */
+    val virtualKeys: Int = 0,
+    /** Show note names on the on-screen keyboard keys. */
+    val showKeyLabels: Boolean = false,
+    /** Show octave numbers on the on-screen keys (on C keys only when note names are off). */
+    val showOctaveNumbers: Boolean = false,
     /** Range of the user's physical MIDI keyboard (set by size preset or detection). */
     val keyboardLowest: Int = 36,
     val keyboardHighest: Int = 96,
@@ -31,8 +44,19 @@ data class Settings(
     val rangeExceedsKeyboard: Boolean
         get() = lowestMidi < keyboardLowest || highestMidi > keyboardHighest
 
-    /** Only the fields that affect a running practice session. */
-    fun practiceKey(): Settings = copy(keyboardLowest = 0, keyboardHighest = 0, virtualKeySound = true)
+    /** Only the fields whose change should start a new practice session. */
+    fun practiceKey(): Settings = Settings(
+        lowestMidi = lowestMidi,
+        highestMidi = highestMidi,
+        notesPerClef = notesPerClef,
+        sessionLength = sessionLength,
+        includeAccidentals = includeAccidentals,
+    )
+
+    /** Range of the on-screen keyboard. */
+    val virtualRange: IntRange
+        get() = KeyboardSize.entries.firstOrNull { it.keys == virtualKeys }?.let { it.lowest..it.highest }
+            ?: lowestMidi..highestMidi
 
     fun sanitized(): Settings {
         val lo = lowestMidi.coerceIn(MIDI_MIN, MIDI_MAX - MIN_RANGE)
@@ -42,7 +66,8 @@ data class Settings(
             highestMidi = hi,
             notesPerClef = notesPerClef.coerceIn(1, 500),
             sessionLength = sessionLength.coerceIn(5, 1000),
-            wrongPauseMs = wrongPauseMs.coerceIn(500, 10_000),
+            mistakePauseMs = mistakePauseMs.coerceIn(MIN_PAUSE_MS, MAX_PAUSE_MS),
+            virtualKeys = if (KeyboardSize.entries.any { it.keys == virtualKeys }) virtualKeys else 0,
             keyboardLowest = min(keyboardLowest, keyboardHighest).coerceIn(0, 127),
             keyboardHighest = max(keyboardLowest, keyboardHighest).coerceIn(0, 127),
         )
@@ -51,6 +76,8 @@ data class Settings(
     companion object {
         /** Minimum practice range: one octave. */
         const val MIN_RANGE = 12
+        const val MIN_PAUSE_MS = 300
+        const val MAX_PAUSE_MS = 5000
     }
 }
 

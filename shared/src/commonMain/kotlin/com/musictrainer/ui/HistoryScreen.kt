@@ -69,7 +69,9 @@ fun HistoryScreen(state: AppState) {
             }
         }
         item { TrendCharts(state) }
-        items(history) { rec -> HistoryRow(rec, state.platform.formatDate(rec.timestamp)) }
+        items(history, key = { it.timestamp }) { rec ->
+            Box(Modifier.animateItem()) { HistoryRow(rec, state.platform.formatDate(rec.timestamp)) }
+        }
     }
 
     if (confirmClear) {

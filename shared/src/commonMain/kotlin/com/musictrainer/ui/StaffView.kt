@@ -1,6 +1,9 @@
 package com.musictrainer.ui
 
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
@@ -23,6 +26,8 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.sp
 import com.musictrainer.model.Accidental
 import com.musictrainer.model.Clef
+import com.musictrainer.model.POINTS_CORRECT
+import com.musictrainer.model.POINTS_WRONG
 import com.musictrainer.model.Settings
 import com.musictrainer.model.SpelledNote
 import com.musictrainer.model.notePool
@@ -73,14 +78,26 @@ fun StaffView(session: SessionController, modifier: Modifier = Modifier) {
     val ink = MaterialTheme.colorScheme.onSurface
     val faded = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f)
 
-    val progress = remember { Animatable(1f) }
+    // Each animation is (re)created at its start value during composition, so the very first
+    // frame after a change is already correct (snapping in an effect would lag one frame).
+    val progress = remember(session.feedbackId) { Animatable(if (session.phase == Phase.CORRECT) 0f else 1f) }
     LaunchedEffect(session.feedbackId) {
-        if (session.phase == Phase.CORRECT) {
-            progress.snapTo(0f)
-            progress.animateTo(1f, tween(650, easing = LinearOutSlowInEasing))
-        } else {
-            progress.snapTo(1f)
-        }
+        if (progress.value < 1f) progress.animateTo(1f, tween(650, easing = LinearOutSlowInEasing))
+    }
+    // New note entrance: slides in from the right, fades in and pops to size with a little overshoot.
+    val appear = remember(session.index, session.note) { Animatable(0f) }
+    LaunchedEffect(session.index, session.note) {
+        appear.animateTo(1f, spring(dampingRatio = 0.55f, stiffness = 260f))
+    }
+    // Wrong answer: the note shakes horizontally.
+    val shake = remember(session.feedbackId) { Animatable(if (session.phase == Phase.WRONG) 0f else 1f) }
+    LaunchedEffect(session.feedbackId) {
+        if (shake.value < 1f) shake.animateTo(1f, tween(450, easing = LinearEasing))
+    }
+    // Slide everything one note to the left when a new note appears (1 = one spacing to the right).
+    val scroll = remember(session.index) { Animatable(if (session.index > 0) 1f else 0f) }
+    LaunchedEffect(session.index) {
+        if (scroll.value > 0f) scroll.animateTo(0f, tween(350, easing = FastOutSlowInEasing))
     }
 
     Canvas(modifier) {
@@ -92,25 +109,58 @@ fun StaffView(session: SessionController, modifier: Modifier = Modifier) {
         // Fit the staff (centred on its middle line) plus room for ledger lines and labels.
         val above = max(bounds.second + 7, 12) - 4
         val below = 4 - min(bounds.first - 3, -4)
-        val half = min(size.height / (2f * max(above, below)), size.width / 44f)
+        val half = min(size.height / (2f * max(above, below)), size.width / 40f)
         val space = 2 * half
         val midY = size.height / 2f
         fun y(pos: Int): Float = midY - (pos - 4) * half
 
-        val staffWidth = min(size.width * 0.92f, space * 24)
-        val x0 = (size.width - staffWidth) / 2f
-        val x1 = x0 + staffWidth
+        // The staff spans the full width.
+        val x0 = space * 0.5f
+        val x1 = size.width - space * 0.5f
         val lineWidth = max(1f, half * 0.13f)
         for (i in 0..4) drawLine(ink, Offset(x0, y(i * 2)), Offset(x1, y(i * 2)), lineWidth)
         drawLine(ink, Offset(x0, y(0)), Offset(x0, y(8)), lineWidth)
         drawLine(ink, Offset(x1, y(0)), Offset(x1, y(8)), lineWidth)
 
         val glyphPx = 4 * space // SMuFL: 1 em = 4 staff spaces
+        val clefAreaEnd = x0 + space * 4.2f
+        val spacing = space * 5f
+        // Current note in the middle; earlier notes trail off to its left.
+        val noteX = max((x0 + x1) / 2f, clefAreaEnd + spacing * 1.5f)
+        val shift = scroll.value * spacing
+        fun xBack(k: Int) = noteX - k * spacing + shift // k notes before the current one
+        /** Fades notes out as they approach the leading clef. */
+        fun alphaAt(x: Float) = ((x - clefAreaEnd - space) / spacing).coerceIn(0f, 1f)
+
+        // Previously answered notes, newest nearest the current note.
+        val trail = session.trail
+        var leftmostClef = clef
+        for (k in 1..trail.size) {
+            val x = xBack(k)
+            val a = alphaAt(x)
+            if (a <= 0f) break
+            val item = trail[trail.size - k]
+            val newer = if (k == 1) clef else trail[trail.size - k + 1].clef
+            if (newer != item.clef) {
+                // Clef change between this note and the next one: small clef, as in printed music.
+                val cx = x + spacing * 0.5f - space * 0.9f
+                val ca = alphaAt(cx)
+                if (newer == Clef.TREBLE) glyph(textMeasurer, bravura, G_CLEF, cx, y(2), glyphPx * 0.75f, ink.copy(alpha = ca))
+                else glyph(textMeasurer, bravura, F_CLEF, cx, y(6), glyphPx * 0.75f, ink.copy(alpha = ca))
+            }
+            val color = (if (item.correct) CorrectGreen else WrongRed).copy(alpha = a)
+            drawNote(textMeasurer, bravura, item.note, item.clef, x, ::y, space, glyphPx, color, lineWidth, 1f)
+            if (!item.correct) {
+                drawLabel(textMeasurer, item.note.name, x, y(max(item.note.staffPosition(item.clef), 8) + 3), space * 1.1f, color)
+            }
+            if (a >= 0.5f) leftmostClef = item.clef
+        }
+
+        // Leading clef: the clef of the leftmost visible note.
         val clefX = x0 + space * 0.6f
-        if (clef == Clef.TREBLE) glyph(textMeasurer, bravura, G_CLEF, clefX, y(2), glyphPx, ink)
+        if (leftmostClef == Clef.TREBLE) glyph(textMeasurer, bravura, G_CLEF, clefX, y(2), glyphPx, ink)
         else glyph(textMeasurer, bravura, F_CLEF, clefX, y(6), glyphPx, ink)
 
-        val noteX = x0 + staffWidth * 0.55f
         val pos = note.staffPosition(clef)
         val noteColor = when (phase) {
             Phase.CORRECT -> CorrectGreen
@@ -145,21 +195,52 @@ fun StaffView(session: SessionController, modifier: Modifier = Modifier) {
             }
         }
 
+        val a = appear.value
         val pop = if (phase == Phase.CORRECT) 1f + 0.4f * sin(PI.toFloat() * t) else 1f
-        drawNote(textMeasurer, bravura, note, clef, noteX, ::y, space, glyphPx, noteColor, lineWidth, pop)
+        val enterScale = 0.4f + 0.6f * a // overshoots past 1 with the spring
+        val st = shake.value
+        val shakeX = if (st < 1f) sin(st * PI.toFloat() * 6f) * (1f - st) * space * 0.6f else 0f
+        val enterX = (1f - a.coerceIn(0f, 1f)) * spacing * 1.2f
+        drawNote(
+            textMeasurer, bravura, note, clef, noteX + shift + enterX + shakeX, ::y, space, glyphPx,
+            noteColor.copy(alpha = noteColor.alpha * a.coerceIn(0f, 1f)), lineWidth, pop * enterScale,
+        )
+
+        // Floating points after an answer: "+10" rises from a correct note, "−5" sinks from a wrong one.
+        val pointsT = if (phase == Phase.CORRECT) t else if (phase == Phase.WRONG) st else 1f
+        if (pointsT < 1f) {
+            val correctAnswer = phase == Phase.CORRECT
+            val label = if (correctAnswer) "+$POINTS_CORRECT" else "−$POINTS_WRONG"
+            val rise = if (correctAnswer) -space * 3f * pointsT else space * 1.5f * pointsT
+            drawLabel(
+                textMeasurer, label, noteX + space * 3f, y(pos) + rise, space * 1.3f,
+                noteColor.copy(alpha = 1f - pointsT * pointsT), bold = true,
+            )
+        }
 
         // Note name above the staff after an answer.
         if (phase == Phase.CORRECT || phase == Phase.WRONG) {
-            val labelBaseline = y(max(pos, 8) + 4)
-            val style = TextStyle(
-                fontSize = (space * 1.6f / (density * fontScale)).sp,
-                fontWeight = FontWeight.Bold,
-                color = noteColor,
-            )
-            val layout = textMeasurer.measure(note.name, style)
-            drawText(layout, topLeft = Offset(noteX - layout.size.width / 2f, labelBaseline - layout.firstBaseline))
+            drawLabel(textMeasurer, note.name, noteX, y(max(pos, 8) + 4), space * 1.6f, noteColor, bold = true)
         }
     }
+}
+
+private fun DrawScope.drawLabel(
+    tm: TextMeasurer,
+    text: String,
+    centerX: Float,
+    baselineY: Float,
+    sizePx: Float,
+    color: Color,
+    bold: Boolean = false,
+) {
+    val style = TextStyle(
+        fontSize = (sizePx / (density * fontScale)).sp,
+        fontWeight = if (bold) FontWeight.Bold else FontWeight.Medium,
+        color = color,
+    )
+    val layout = tm.measure(text, style)
+    drawText(layout, topLeft = Offset(centerX - layout.size.width / 2f, baselineY - layout.firstBaseline))
 }
 
 private fun DrawScope.drawNote(

@@ -52,7 +52,7 @@ class AppState(val platform: Platform, private val scope: CoroutineScope) {
         val old = settings
         settings = sanitized
         repo.saveSettings(sanitized)
-        if (old.practiceKey() != sanitized.practiceKey()) session.restart(sanitized)
+        if (old.practiceKey() != sanitized.practiceKey()) session.restart(sanitized) else session.applyLive(sanitized)
     }
 
     fun startDetection() {

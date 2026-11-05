@@ -2,6 +2,7 @@ package com.musictrainer.session
 
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.musictrainer.model.Accidental
@@ -17,6 +18,9 @@ import kotlinx.coroutines.launch
 import kotlin.random.Random
 
 enum class Phase { WAITING, CORRECT, WRONG, FINISHED }
+
+/** A note that has already been answered, kept so the staff can show it scrolling away. */
+data class AnsweredNote(val note: SpelledNote, val clef: Clef, val correct: Boolean)
 
 /**
  * One practice session: shows a note, waits for a key, evaluates it,
@@ -50,6 +54,8 @@ class SessionController(
         private set
     var lastRecord by mutableStateOf<SessionRecord?>(null)
         private set
+    /** Previously answered notes, oldest first (bounded). */
+    val trail = mutableStateListOf<AnsweredNote>()
 
     private var job: Job? = null
     private var noteShownAt = 0L
@@ -68,7 +74,13 @@ class SessionController(
         totalResponseMs = 0
         lastRecord = null
         note = null
+        trail.clear()
         showNote()
+    }
+
+    /** Applies settings that don't need a new session (e.g. the mistake pause). */
+    fun applyLive(newSettings: Settings) {
+        settings = newSettings
     }
 
     /** Starts over with a fresh score; an unfinished session with answers is still logged. */
@@ -90,13 +102,15 @@ class SessionController(
             wrong++
             playedNote = SpelledNote.spell(midi, preferFlat = target.accidental == Accidental.FLAT)
             phase = Phase.WRONG
-            advanceAfter(settings.wrongPauseMs.toLong())
+            advanceAfter(settings.mistakePauseMs.toLong())
         }
     }
 
     private fun advanceAfter(ms: Long) {
         job = scope.launch {
             delay(ms)
+            note?.let { trail += AnsweredNote(it, clef, correct = phase == Phase.CORRECT) }
+            if (trail.size > MAX_TRAIL) trail.removeAt(0)
             index++
             if (index >= settings.sessionLength) {
                 phase = Phase.FINISHED
@@ -146,5 +160,6 @@ class SessionController(
 
     private companion object {
         const val CORRECT_PAUSE_MS = 700L
+        const val MAX_TRAIL = 64
     }
 }

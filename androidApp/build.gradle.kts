@@ -13,8 +13,9 @@ android {
         applicationId = "com.musictrainer"
         minSdk = 29
         targetSdk = 37
-        versionCode = 1
-        versionName = "1.0.0"
+        versionName = providers.gradleProperty("app.version").get()
+        // 1.1.0 -> 10100: always increases with the version, as Android requires for updates.
+        versionCode = versionName!!.split(".").map(String::toInt).let { (a, b, c) -> a * 10000 + b * 100 + c }
     }
 
     compileOptions {

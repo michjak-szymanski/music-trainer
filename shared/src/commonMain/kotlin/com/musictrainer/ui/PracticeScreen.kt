@@ -1,5 +1,42 @@
 package com.musictrainer.ui
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.unit.TextUnit
+import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.pointer.PointerIcon
+import androidx.compose.ui.input.pointer.pointerHoverIcon
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Dp
+import kotlin.math.abs
+import kotlin.math.roundToInt
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -42,6 +79,8 @@ import com.musictrainer.session.Phase
 @Composable
 fun PracticeScreen(state: AppState) {
     val s = state.session
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+    val keyboardMax = maxHeight * 0.6f
     Column(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 8.dp)) {
         FlowRow(
             Modifier.fillMaxWidth(),
@@ -54,17 +93,21 @@ fun PracticeScreen(state: AppState) {
                 "${s.clef.label} clef · ${s.clef.other.label.lowercase()} in ${s.notesUntilClefChange}",
                 style = MaterialTheme.typography.titleMedium,
             )
-            Text("✓ ${s.correct}", color = CorrectGreen, fontWeight = FontWeight.Bold, fontSize = 20.sp)
-            Text("✗ ${s.wrong}", color = WrongRed, fontWeight = FontWeight.Bold, fontSize = 20.sp)
-            Text("Score ${score(s.correct, s.wrong)}", style = MaterialTheme.typography.titleMedium)
+            RollingNumber(s.correct, "✓ ", CorrectGreen, 20.sp)
+            RollingNumber(s.wrong, "✗ ", WrongRed, 20.sp)
+            RollingNumber(score(s.correct, s.wrong), "Score ", MaterialTheme.colorScheme.onSurface, 16.sp, bold = false)
             OutlinedButton(onClick = { s.restart(state.settings) }) { Text("Restart session") }
         }
 
         Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-            if (s.phase == Phase.FINISHED) {
+            StaffView(s, Modifier.fillMaxSize())
+            // Results pop in over the staff with a springy scale + fade.
+            androidx.compose.animation.AnimatedVisibility(
+                visible = s.phase == Phase.FINISHED && s.lastRecord != null,
+                enter = fadeIn(tween(250)) + scaleIn(spring(dampingRatio = 0.6f, stiffness = 300f), initialScale = 0.6f),
+                exit = fadeOut(tween(150)) + scaleOut(targetScale = 0.9f),
+            ) {
                 s.lastRecord?.let { ResultsCard(it) { s.restart(state.settings) } }
-            } else {
-                StaffView(s, Modifier.fillMaxSize())
             }
         }
 
@@ -76,21 +119,39 @@ fun PracticeScreen(state: AppState) {
             s.phase == Phase.WAITING -> "Play the note shown on the ${if (s.clef == Clef.TREBLE) "treble" else "bass"} staff"
             else -> ""
         }
-        Text(
-            message,
-            Modifier.fillMaxWidth().padding(vertical = 6.dp),
-            textAlign = TextAlign.Center,
-            fontSize = 18.sp,
-            fontWeight = if (s.phase == Phase.WAITING) FontWeight.Normal else FontWeight.Bold,
-            color = when (s.phase) {
+        val messageColor by animateColorAsState(
+            when (s.phase) {
                 Phase.CORRECT -> CorrectGreen
                 Phase.WRONG -> WrongRed
                 else -> MaterialTheme.colorScheme.onSurfaceVariant
-            },
+            }
         )
+        AnimatedContent(
+            targetState = message,
+            transitionSpec = { (fadeIn(tween(200)) + slideInVertically { it / 2 }) togetherWith fadeOut(tween(150)) },
+            modifier = Modifier.fillMaxWidth(),
+        ) { text ->
+            Text(
+                text,
+                Modifier.fillMaxWidth().padding(vertical = 6.dp),
+                textAlign = TextAlign.Center,
+                fontSize = 18.sp,
+                fontWeight = if (s.phase == Phase.WAITING) FontWeight.Normal else FontWeight.Bold,
+                color = messageColor,
+            )
+        }
 
+        // Pressed key flashes blue and fades back out.
+        val flash = remember { Animatable(0f) }
+        var flashedKey by remember { mutableStateOf<Int?>(null) }
+        LaunchedEffect(state.pressCount) {
+            if (state.pressCount == 0) return@LaunchedEffect
+            flashedKey = state.pressedKey
+            flash.snapTo(1f)
+            flash.animateTo(0f, tween(450))
+        }
         val highlights = buildMap<Int, Color> {
-            state.pressedKey?.let { put(it, Color(0xFF8AB4F8)) }
+            flashedKey?.let { if (flash.value > 0f) put(it, lerp(Color.White, Color(0xFF8AB4F8), flash.value)) }
             if (target != null) when (s.phase) {
                 Phase.CORRECT -> put(target.midi, CorrectGreen)
                 Phase.WRONG -> {
@@ -100,35 +161,144 @@ fun PracticeScreen(state: AppState) {
                 else -> Unit
             }
         }
-        VirtualKeyboard(s.settings.lowestMidi, s.settings.highestMidi, highlights, state::onVirtualKey)
+        val ui = state.settings
+        AnimatedVisibility(
+            visible = ui.showVirtualKeyboard,
+            enter = expandVertically(expandFrom = Alignment.Top) + fadeIn(),
+            exit = shrinkVertically(shrinkTowards = Alignment.Top) + fadeOut(),
+        ) {
+            VirtualKeyboard(
+                low = ui.virtualRange.first,
+                high = ui.virtualRange.last,
+                highlights = highlights,
+                onKey = state::onVirtualKey,
+                savedHeightDp = state.settings.pianoHeightDp,
+                showNames = ui.showKeyLabels,
+                showOctaves = ui.showOctaveNumbers,
+                maxTotal = keyboardMax,
+                onHeightCommitted = { state.updateSettings(state.settings.copy(pianoHeightDp = it)) },
+            )
+        }
+    }
     }
 }
 
 /**
- * On-screen keyboard. When the keys would be too narrow to tap (e.g. a phone in
- * portrait), the range is split into two stacked rows: upper half on top, lower half below.
+ * On-screen keyboard with a drag handle on top to resize it (double-click / double-tap the
+ * handle to go back to automatic size). When the keys would be too narrow to tap (e.g. a phone
+ * in portrait), the range is split into two stacked rows: upper half on top, lower half below.
  */
 @Composable
-private fun VirtualKeyboard(low: Int, high: Int, highlights: Map<Int, Color>, onKey: (Int) -> Unit) {
+private fun VirtualKeyboard(
+    low: Int,
+    high: Int,
+    highlights: Map<Int, Color>,
+    onKey: (Int) -> Unit,
+    savedHeightDp: Int,
+    showNames: Boolean,
+    showOctaves: Boolean,
+    maxTotal: Dp,
+    onHeightCommitted: (Int) -> Unit,
+) {
+    val density = LocalDensity.current
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         val whiteKeys = (low..high).count { !isBlackKey(it) }
         val split = maxWidth / whiteKeys < 26.dp
-        if (!split) {
-            Piano(low, high, highlights, onKey, Modifier.fillMaxWidth().height(110.dp))
-        } else {
-            // Split on the C closest to the middle of the range.
-            val mid = (low + high) / 2
-            val splitC = (((mid + 6) / 12) * 12).coerceIn(low + 1, high)
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Piano(splitC, high, highlights, onKey, Modifier.fillMaxWidth().height(100.dp))
-                Piano(low, splitC - 1, highlights, onKey, Modifier.fillMaxWidth().height(100.dp))
+        val gap = 6.dp
+        val rowKeys = if (split) (whiteKeys + 1) / 2 else whiteKeys
+        // Automatic: proportions close to a real keyboard, but never crowding out the staff.
+        val autoRow = (maxWidth / rowKeys * 4.5f).coerceIn(90.dp, 220.dp)
+        val minTotal = if (split) 140.dp else 70.dp
+        val upper = maxOf(minTotal, maxTotal)
+        val autoTotal = (if (split) autoRow * 2 + gap else autoRow).coerceIn(minTotal, upper)
+
+        var dragHeight by remember { mutableStateOf<Dp?>(null) }
+        val total = (dragHeight ?: if (savedHeightDp > 0) savedHeightDp.dp else autoTotal).coerceIn(minTotal, upper)
+
+        Column(Modifier.fillMaxWidth()) {
+            ResizeHandle(
+                onDrag = { deltaPx ->
+                    val delta = with(density) { deltaPx.toDp() }
+                    dragHeight = ((dragHeight ?: total) - delta).coerceIn(minTotal, upper) // drag up = taller
+                },
+                onDragEnd = {
+                    dragHeight?.let { onHeightCommitted(it.value.roundToInt()) }
+                    dragHeight = null
+                },
+                onReset = { onHeightCommitted(0) },
+            )
+            if (!split) {
+                Piano(low, high, highlights, onKey, Modifier.fillMaxWidth().height(total), showNames, showOctaves)
+            } else {
+                // Split on the C closest to the middle of the range.
+                val mid = (low + high) / 2
+                val splitC = (((mid + 6) / 12) * 12).coerceIn(low + 1, high)
+                val row = (total - gap) / 2
+                Column(verticalArrangement = Arrangement.spacedBy(gap)) {
+                    Piano(splitC, high, highlights, onKey, Modifier.fillMaxWidth().height(row), showNames, showOctaves)
+                    Piano(low, splitC - 1, highlights, onKey, Modifier.fillMaxWidth().height(row), showNames, showOctaves)
+                }
             }
         }
     }
 }
 
 @Composable
+private fun ResizeHandle(onDrag: (Float) -> Unit, onDragEnd: () -> Unit, onReset: () -> Unit) {
+    val drag by rememberUpdatedState(onDrag)
+    val end by rememberUpdatedState(onDragEnd)
+    val reset by rememberUpdatedState(onReset)
+    Box(
+        Modifier.fillMaxWidth()
+            .height(22.dp)
+            .pointerHoverIcon(PointerIcon.Hand)
+            // One detector for both drag-to-resize and double-tap-to-reset.
+            .pointerInput(Unit) {
+                var lastTapAt = 0L
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    var moved = 0f
+                    var dragging = false
+                    while (true) {
+                        val event = awaitPointerEvent()
+                        val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                        if (!change.pressed) break
+                        val dy = change.position.y - change.previousPosition.y
+                        moved += abs(dy)
+                        if (!dragging && moved > viewConfiguration.touchSlop) dragging = true
+                        if (dragging && dy != 0f) {
+                            drag(dy)
+                            change.consume()
+                        }
+                    }
+                    if (dragging) {
+                        end()
+                    } else {
+                        val now = down.uptimeMillis
+                        if (now - lastTapAt < viewConfiguration.doubleTapTimeoutMillis) {
+                            reset()
+                            lastTapAt = 0L
+                        } else {
+                            lastTapAt = now
+                        }
+                    }
+                }
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(
+            Modifier.size(width = 56.dp, height = 5.dp)
+                .clip(RoundedCornerShape(50))
+                .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f))
+        )
+    }
+}
+
+@Composable
 private fun ResultsCard(record: SessionRecord, onRestart: () -> Unit) {
+    // Score counts up from 0 when the card appears.
+    val shownScore = remember(record) { Animatable(0f) }
+    LaunchedEffect(record) { shownScore.animateTo(record.score.toFloat(), tween(900, easing = FastOutSlowInEasing)) }
     Card(Modifier.widthIn(max = 460.dp).padding(16.dp)) {
         Column(
             Modifier.padding(28.dp).fillMaxWidth(),
@@ -136,7 +306,7 @@ private fun ResultsCard(record: SessionRecord, onRestart: () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Text("Session complete", style = MaterialTheme.typography.headlineSmall)
-            Text("${record.score}", fontSize = 64.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+            Text("${shownScore.value.roundToInt()}", fontSize = 64.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
             Text("points", style = MaterialTheme.typography.labelLarge)
             HorizontalDivider()
             Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
@@ -159,4 +329,22 @@ private fun ResultsCard(record: SessionRecord, onRestart: () -> Unit) {
 fun formatSeconds(ms: Long): String {
     val tenths = (ms + 50) / 100
     return "${tenths / 10}.${tenths % 10} s"
+}
+
+/** A number that rolls up/down when it changes. */
+@Composable
+private fun RollingNumber(value: Int, prefix: String, color: Color, size: TextUnit, bold: Boolean = true) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(prefix, color = color, fontWeight = if (bold) FontWeight.Bold else FontWeight.Medium, fontSize = size)
+        AnimatedContent(
+            targetState = value,
+            transitionSpec = {
+                val up = targetState > initialState
+                (slideInVertically { if (up) it else -it } + fadeIn()) togetherWith
+                    (slideOutVertically { if (up) -it else it } + fadeOut())
+            },
+        ) { v ->
+            Text("$v", color = color, fontWeight = if (bold) FontWeight.Bold else FontWeight.Medium, fontSize = size)
+        }
+    }
 }

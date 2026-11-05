@@ -43,7 +43,8 @@ private class KeyLayout(val low: Int, val high: Int, val width: Float, val heigh
 
 /**
  * On-screen keyboard spanning [low]..[high] (widened to white keys).
- * Shows highlighted keys and can be tapped as an alternative input.
+ * Shows highlighted keys and can be tapped as an alternative input. [showNames] labels every key;
+ * [showOctaves] adds octave numbers (or, without names, marks just the C keys, e.g. "C4").
  */
 @Composable
 fun Piano(
@@ -52,6 +53,8 @@ fun Piano(
     highlights: Map<Int, Color>,
     onKey: (Int) -> Unit,
     modifier: Modifier = Modifier,
+    showNames: Boolean = false,
+    showOctaves: Boolean = false,
 ) {
     val lo = if (isBlackKey(low)) low - 1 else low
     val hi = if (isBlackKey(high)) high + 1 else high
@@ -69,11 +72,17 @@ fun Piano(
             val r = k.whiteRect(i)
             drawRect(highlights[midi] ?: Color.White, r.topLeft, r.size)
             drawRect(border, r.topLeft, r.size, style = Stroke(1f))
-            if (midi % 12 == 0 && k.whiteW > 14f) {
-                val layout = tm.measure(
-                    noteName(midi),
-                    TextStyle(fontSize = (k.whiteW * 0.42f / (density * fontScale)).coerceAtMost(13f).sp, color = Color(0xFF666666)),
-                )
+            val isC = midi % 12 == 0
+            if ((showNames || (showOctaves && isC)) && k.whiteW > 10f) {
+                val px = (k.whiteW * 0.38f).coerceAtMost(15f * density)
+                val full = noteName(midi) // e.g. "D4"
+                val name = when {
+                    !showNames -> full
+                    !showOctaves -> full.dropLast(1)
+                    isC || k.whiteW > px * 2.4f -> full // octave number where it fits; always on C
+                    else -> full.dropLast(1)
+                }
+                val layout = tm.measure(name, TextStyle(fontSize = (px / (density * fontScale)).sp, color = Color(0xFF555555)))
                 drawText(layout, topLeft = Offset(r.center.x - layout.size.width / 2f, r.bottom - layout.size.height - 4f))
             }
         }
@@ -85,6 +94,14 @@ fun Piano(
                 Size(r.width, r.height),
                 CornerRadius(r.width * 0.12f),
             )
+            if (showNames && r.width > 9f) {
+                val px = (r.width * 0.5f).coerceAtMost(13f * density)
+                val layout = tm.measure(
+                    noteName(midi).dropLast(1), // e.g. "C♯"
+                    TextStyle(fontSize = (px / (density * fontScale)).sp, color = Color(0xFFBBBBBB)),
+                )
+                drawText(layout, topLeft = Offset(r.center.x - layout.size.width / 2f, r.bottom - layout.size.height - 3f))
+            }
         }
     }
 }
