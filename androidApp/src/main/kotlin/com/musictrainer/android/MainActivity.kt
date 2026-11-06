@@ -21,11 +21,16 @@ private class AndroidFileStore(private val dir: File) : FileStore {
         tmp.writeText(content)
         tmp.renameTo(File(dir, name))
     }
+
+    override fun delete(name: String) {
+        File(dir, name).delete()
+    }
 }
 
 class MainActivity : ComponentActivity() {
     private lateinit var midi: AndroidMidiInput
     private val sound = AndroidKeySound()
+    private lateinit var midiOut: AndroidMidiOutput
 
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
@@ -34,6 +39,8 @@ class MainActivity : ComponentActivity() {
 
         midi = AndroidMidiInput(this)
         midi.start()
+        midiOut = AndroidMidiOutput(this)
+        val files = AndroidMusicFiles(this) // registers the folder picker; must happen in onCreate
         val dateFormat = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm").withZone(ZoneId.systemDefault())
         val platform = Platform(
             name = "Android",
@@ -42,6 +49,8 @@ class MainActivity : ComponentActivity() {
             now = System::currentTimeMillis,
             formatDate = { dateFormat.format(Instant.ofEpochMilli(it)) },
             sound = sound,
+            files = files,
+            midiOut = midiOut,
         )
         setContent { App(platform) }
     }
@@ -49,6 +58,7 @@ class MainActivity : ComponentActivity() {
     override fun onDestroy() {
         midi.stop()
         sound.release()
+        midiOut.close()
         super.onDestroy()
     }
 }

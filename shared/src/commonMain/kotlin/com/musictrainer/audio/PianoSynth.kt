@@ -10,6 +10,10 @@ import kotlin.math.sin
 interface KeySound {
     fun setSamples(samples: PianoSamples)
     fun play(midi: Int)
+    /** Key released: the note fades out like a piano damper (no sustain pedal). */
+    fun stop(midi: Int) = Unit
+    /** Releases every sounding note (e.g. when playback stops). */
+    fun stopAll() = Unit
     fun release()
 }
 
@@ -62,6 +66,10 @@ class PianoSamples(val sampleRate: Int, val byMidi: Map<Int, ShortArray>) {
 class PianoSynth(private val outputRate: Int = SAMPLE_RATE) {
     private abstract class Voice {
         var done = false
+        var midi = -1
+        /** 1 while held; after release it decays to 0 in about [RELEASE_S] seconds. */
+        var gain = 1.0
+        var releasing = false
         abstract fun next(): Double
     }
 
@@ -105,6 +113,8 @@ class PianoSynth(private val outputRate: Int = SAMPLE_RATE) {
         }
     }
 
+    /** Per-sample decay giving a ~60 dB fade over RELEASE_S. */
+    private val releaseFactor = kotlin.math.exp(kotlin.math.ln(1e-3) / (RELEASE_S * outputRate))
     private var samples: PianoSamples? = null
     private val voices = ArrayList<Voice>()
 
@@ -114,23 +124,43 @@ class PianoSynth(private val outputRate: Int = SAMPLE_RATE) {
         samples = s
     }
 
+    /** Releases every sounding voice. */
+    fun allNotesOff() {
+        for (v in voices) v.releasing = true
+    }
+
+    /** Releases every sounding voice of [midi]. */
+    fun noteOff(midi: Int) {
+        for (v in voices) if (v.midi == midi) v.releasing = true
+    }
+
     fun noteOn(midi: Int) {
+        // Re-striking a key damps the previous sound of that key quickly.
+        noteOff(midi)
         if (voices.size >= MAX_VOICES) voices.removeAt(0)
         val s = samples
         val root = s?.byMidi?.keys?.minByOrNull { abs(it - midi) }
-        voices += if (s != null && root != null) {
+        val voice = if (s != null && root != null) {
             val step = 2.0.pow((midi - root) / 12.0) * s.sampleRate / outputRate
             SampleVoice(s.byMidi.getValue(root), step)
         } else {
             ToneVoice(midi, outputRate)
         }
+        voice.midi = midi
+        voices += voice
     }
 
     /** Fills [out] with 16-bit mono samples. */
     fun render(out: ShortArray, frames: Int = out.size) {
         for (i in 0 until frames) {
             var sum = 0.0
-            for (v in voices) sum += v.next()
+            for (v in voices) {
+                sum += v.next() * v.gain
+                if (v.releasing) {
+                    v.gain *= releaseFactor
+                    if (v.gain < 1e-4) v.done = true
+                }
+            }
             // Samples are normalized to peak at -3 dBFS, so a single note never reaches the limiter.
             val a = abs(sum)
             val limited = if (a <= KNEE) {
@@ -147,6 +177,8 @@ class PianoSynth(private val outputRate: Int = SAMPLE_RATE) {
     companion object {
         const val SAMPLE_RATE = 44_100
         const val MAX_VOICES = 16
+        /** Damper release time in seconds. */
+        const val RELEASE_S = 0.25
         private const val KNEE = 0.9
         /** Frames rendered per write: ~6 ms. */
         const val CHUNK = 256

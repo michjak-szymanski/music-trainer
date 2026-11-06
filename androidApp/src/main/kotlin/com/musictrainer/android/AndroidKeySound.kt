@@ -28,6 +28,14 @@ class AndroidKeySound : KeySound {
         }
     }
 
+    override fun stop(midi: Int) {
+        synchronized(lock) { synth.noteOff(midi) }
+    }
+
+    override fun stopAll() {
+        synchronized(lock) { synth.allNotesOff() }
+    }
+
     override fun release() {
         released = true
     }

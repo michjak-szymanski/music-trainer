@@ -10,6 +10,9 @@ plugins {
 }
 
 val composeVersion = "1.12.1"
+// Overridable for throwaway installer tests (-Pmsi.name=..., -Pmsi.upgradeUuid=...).
+val msiName = providers.gradleProperty("msi.name").orNull ?: "MusicTrainer"
+val msiUpgradeUuid = providers.gradleProperty("msi.upgradeUuid").orNull ?: "666f7322-8ac2-4264-b725-ae340e176bd9"
 val coroutinesVersion = "1.11.0"
 
 kotlin {
@@ -61,13 +64,14 @@ val addMsiLaunchOption by tasks.registering(Exec::class) {
     description = "Adds a 'Launch Music Trainer' option to the installer's finish page."
     onlyIf { System.getProperty("os.name").startsWith("Windows") }
     val msi = layout.buildDirectory.file(
-        "compose/binaries/main/msi/MusicTrainer-${providers.gradleProperty("app.version").get()}.msi"
+        "compose/binaries/main/msi/$msiName-${providers.gradleProperty("app.version").get()}.msi"
     )
     executable = "powershell"
     args(
         "-NoProfile", "-ExecutionPolicy", "Bypass",
         "-File", rootProject.file("packaging/windows/add-launch-option.ps1").absolutePath,
         "-Msi", msi.get().asFile.absolutePath,
+        "-ExeName", "$msiName.exe",
     )
 }
 tasks.matching { it.name == "packageMsi" }.configureEach { finalizedBy(addMsiLaunchOption) }
@@ -77,14 +81,14 @@ compose.desktop {
         mainClass = "com.musictrainer.MainKt"
         nativeDistributions {
             targetFormats(TargetFormat.Msi, TargetFormat.Deb, TargetFormat.Rpm)
-            packageName = "MusicTrainer"
+            packageName = msiName
             // Bump for every release: Windows only upgrades when the version is higher.
             packageVersion = providers.gradleProperty("app.version").get()
             description = "Sight-reading trainer for MIDI keyboards"
             vendor = "Music Trainer"
             licenseFile.set(rootProject.file("LICENSE"))
             // From `./gradlew :shared:suggestRuntimeModules`; java.desktop provides javax.sound.
-            modules("java.desktop", "java.instrument", "jdk.unsupported")
+            modules("java.desktop", "java.instrument", "jdk.unsupported", "jdk.httpserver")
             windows {
                 menu = true
                 menuGroup = "Music Trainer"
@@ -92,7 +96,7 @@ compose.desktop {
                 dirChooser = true
                 perUserInstall = true
                 // Keep constant across versions so new MSIs upgrade the installed app.
-                upgradeUuid = "666f7322-8ac2-4264-b725-ae340e176bd9"
+                upgradeUuid = msiUpgradeUuid
                 iconFile.set(project.file("icons/icon.ico"))
             }
             linux {

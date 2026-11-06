@@ -26,7 +26,50 @@ Sight-reading trainer for MIDI keyboards: Windows, Linux and Android (Kotlin Mul
 - The staff scrolls right to left: answered notes stay visible (green = correct, red = wrong with its name),
   with clef-change marks where the clef switched.
   A translucent vertical stripe marks the current note (opacity adjustable in Settings, 0 = off).
-- On Windows the title bar follows the app's light/dark theme.
+- Settings → General (both modes): theme (System / Light / Dark), sound output, Claude/MCP connection.
+- Notation style per mode: music font (Bravura engraved, Leland, Petaluma handwritten), sheet colours
+  (theme, paper, high contrast) and "mix it up" (random look each session) to train reading over pattern
+  recognition. On Windows the title bar follows the theme.
+
+## Note player (mode picker in the top-left corner)
+
+- **Library:** MIDI (.mid/.midi/.kar) and MuseScore (.mscz/.mscx, MuseScore 3–4) files found in the folders
+  chosen in Settings (scanned automatically, subfolders included) plus built-in demo pieces, with title, file
+  type, duration and note count, and a search box.
+- **MuseScore files** are read as notation, so the sheet is exact: note values, tuplets, voices, spelling and
+  accidentals as engraved, ties, clef/key/time changes, pickup bars. The piano part (or the first two-staff part)
+  becomes the grand staff.
+- **Piece page:** play with both hands, right hand, left hand, or no hands (the app plays it); tempo defaults to
+  the file's and can be changed; Follow tempo (play each chord in time) or Wait for me; past sessions for the
+  piece with scores, errors, stars and an accuracy chart.
+- **Sheet:** grand staff engraved from the MIDI file: timing quantized to 16ths, notes split into tied values by
+  beat (half-bar rule in 4/4, compound meters), rests aligned to the beat, beams per beat (half bar for plain
+  eighths in 4/4) with 16th beams and beamlets, stem directions, seconds in chords, accidentals per bar against
+  the key signature (key estimated if the file has none), ties across barlines and systems. Hands come from two
+  tracks (higher = right hand) or a split at middle C.
+- Click anywhere on the sheet to start (or continue) from that bar; "⏮ From the beginning" restarts the piece.
+- **Wait for me** (default): the cursor waits for the right keys, and also checks rhythm (time between chords at the
+  chosen tempo) and how long notes are held; timing mistakes are shown in amber and counted separately.
+  **Follow tempo** moves the cursor by itself. Zoom the sheet with − / +; the zoom is kept for all pieces.
+- **Recording:** switch on "● Record" on the sheet to save what you play (plus the notes the app plays); the piece
+  page's Recordings tab lists and plays them back.
+- Notes of the hand you don't play, and everything in No hands mode, sound through the app piano or a MIDI
+  output device (Settings).
+- Own History (all pieces, with charts) and Settings, separate from the Note feeder.
+- MIDI files: tuplets, several voices in one hand and key changes can't be recovered from MIDI (use MuseScore
+  files for those). Not yet: MusicXML import, triplets nested inside triplets.
+
+## Connect Claude (MCP server, desktop)
+
+Settings → "Connect Claude (MCP server)" starts a read-only MCP server on `http://127.0.0.1:7432/mcp`
+(local only). Add it to Claude Code with:
+
+```sh
+claude mcp add --transport http music-trainer http://127.0.0.1:7432/mcp
+```
+
+Tools: `list_pieces`, `get_session_history` (Note player and Note feeder), `list_recordings`, `get_recording`
+(events or a base64 MIDI file).
 
 ## Install
 
@@ -34,10 +77,10 @@ Installers are built into `dist/`:
 
 | Platform | File | How to install |
 |---|---|---|
-| Windows 10/11 (x64) | `MusicTrainer-1.2.4.msi` | Double-click. Installs per user (no admin), adds Start-menu and desktop shortcuts; the last page offers "Launch Music Trainer". |
-| Debian / Ubuntu / Mint (x64) | `music-trainer_1.2.4_amd64.deb` | `sudo apt install ./music-trainer_1.2.4_amd64.deb`, then start "Music Trainer" from the menu (or `/opt/music-trainer/bin/MusicTrainer`). |
-| Other Linux (x64) | `MusicTrainer-1.2.4-linux-x64.tar.gz` | Extract anywhere and run `MusicTrainer/bin/MusicTrainer`. |
-| Android 10+ | `MusicTrainer-1.2.4-android.apk` | Copy to the phone and open it (allow "install unknown apps"). |
+| Windows 10/11 (x64) | `MusicTrainer-1.9.3.msi` | Double-click. Installs per user (no admin), adds Start-menu and desktop shortcuts; the last page offers "Launch Music Trainer". |
+| Debian / Ubuntu / Mint (x64) | `music-trainer_1.9.3_amd64.deb` | `sudo apt install ./music-trainer_1.9.3_amd64.deb`, then start "Music Trainer" from the menu (or `/opt/music-trainer/bin/MusicTrainer`). |
+| Other Linux (x64) | `MusicTrainer-1.9.3-linux-x64.tar.gz` | Extract anywhere and run `MusicTrainer/bin/MusicTrainer`. |
+| Android 10+ | `MusicTrainer-1.9.3-android.apk` | Copy to the phone and open it (allow "install unknown apps"). |
 
 **Updating:** just install the newer file over the old one. Windows replaces the installed version automatically
 (your settings and history are kept), `apt install` upgrades the .deb, and Android updates the app in place.
@@ -75,8 +118,9 @@ environment variable) and in the app's private storage on Android.
 
 ## Credits
 
-- Music font: [Bravura](https://github.com/steinbergmedia/bravura) by Steinberg, SIL Open Font License
-  (`licenses/Bravura-OFL.txt`).
+- Music fonts (SIL Open Font License): [Bravura](https://github.com/steinbergmedia/bravura) and
+  [Petaluma](https://github.com/steinbergmedia/petaluma) by Steinberg, [Leland](https://github.com/MuseScore/MuseScore/tree/master/fonts/leland)
+  by MuseScore (`licenses/`).
 - Piano samples: [Salamander Grand Piano V3](https://freepats.zenvoid.org/Piano/acoustic-grand-piano.html) by
   Alexander Holm, CC-BY 3.0. One velocity layer (v11) of the original 44.1 kHz / 16-bit recordings, every
   minor third, mixed to mono, trimmed and normalized; other keys are repitched from the nearest sample.

@@ -28,6 +28,8 @@ class AndroidMidiInput(context: Context) : MidiInput {
     override val devices: StateFlow<List<MidiDeviceStatus>> = _devices
     override val error: StateFlow<String?> = _error
     override val noteOns: SharedFlow<Int> = _noteOns
+    private val _noteOffs = MutableSharedFlow<Int>(extraBufferCapacity = 64)
+    override val noteOffs: SharedFlow<Int> = _noteOffs
 
     private class Opened(val device: MidiDevice, val ports: List<MidiOutputPort>, val name: String)
 
@@ -126,7 +128,9 @@ class AndroidMidiInput(context: Context) : MidiInput {
                     (status and 0xF0) == 0xC0 || (status and 0xF0) == 0xD0 -> Unit // one data byte
                     data1 < 0 -> data1 = b
                     else -> {
-                        if ((status and 0xF0) == 0x90 && b > 0) _noteOns.tryEmit(data1)
+                        val cmd = status and 0xF0
+                        if (cmd == 0x90 && b > 0) _noteOns.tryEmit(data1)
+                        else if (cmd == 0x80 || cmd == 0x90) _noteOffs.tryEmit(data1)
                         data1 = -1
                     }
                 }

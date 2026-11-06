@@ -1,9 +1,13 @@
 package com.musictrainer.ui
 
 import androidx.compose.foundation.background
+import com.musictrainer.model.AppMode
+import com.musictrainer.model.AppTheme
+import androidx.compose.foundation.layout.Row
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.tween
 import com.musictrainer.model.KeyboardSize
+import com.musictrainer.player.PlayerSettings
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.material3.DropdownMenuItem
@@ -30,6 +34,7 @@ import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
@@ -57,26 +62,37 @@ fun App(platform: Platform) {
     val state = remember { AppState(platform, scope) }
     LaunchedEffect(Unit) { state.startFirstSession() }
     LaunchedEffect(Unit) { platform.midi.noteOns.collect { state.onKey(it) } }
+    LaunchedEffect(Unit) { platform.midi.noteOffs.collect { state.onKeyUp(it) } }
     LaunchedEffect(Unit) { loadPianoSamples()?.let(platform.sound::setSamples) }
 
-    MaterialTheme(colorScheme = appColorScheme(isSystemInDarkTheme())) {
+    val dark = when (state.settings.theme) {
+        AppTheme.SYSTEM -> isSystemInDarkTheme()
+        AppTheme.LIGHT -> false
+        AppTheme.DARK -> true
+    }
+    LaunchedEffect(dark) { platform.onDarkTheme?.invoke(dark) }
+    MaterialTheme(colorScheme = appColorScheme(dark)) {
         Surface(Modifier.fillMaxSize()) {
             Column(Modifier.fillMaxSize().safeDrawingPadding()) {
-                PrimaryTabRow(selectedTabIndex = state.screen.ordinal) {
-                    Screen.entries.forEach { s ->
-                        Tab(
-                            selected = state.screen == s,
-                            onClick = { state.screen = s },
-                            text = { Text(s.title) },
-                        )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    ModeSelector(state)
+                    PrimaryTabRow(selectedTabIndex = state.screen.ordinal, modifier = Modifier.weight(1f)) {
+                        Screen.entries.forEach { s ->
+                            Tab(
+                                selected = state.screen == s,
+                                onClick = { state.screen = s },
+                                text = { Text(s.title) },
+                            )
+                        }
                     }
                 }
                 Box(Modifier.weight(1f).fillMaxWidth()) {
-                    Crossfade(targetState = state.screen, animationSpec = tween(220)) { screen ->
+                    Crossfade(targetState = state.screen to state.mode, animationSpec = tween(220)) { (screen, _) ->
+                        val player = state.mode == AppMode.PLAYER
                         when (screen) {
-                            Screen.PRACTICE -> PracticeScreen(state)
-                            Screen.HISTORY -> HistoryScreen(state)
-                            Screen.SETTINGS -> SettingsScreen(state)
+                            Screen.PRACTICE -> if (player) PlayerPracticeScreen(state) else PracticeScreen(state)
+                            Screen.HISTORY -> if (player) PlayerHistoryScreen(state) else HistoryScreen(state)
+                            Screen.SETTINGS -> if (player) PlayerSettingsScreen(state) else SettingsScreen(state)
                         }
                     }
                 }
@@ -103,10 +119,11 @@ private fun MidiStatusBar(state: AppState) {
     Column(
         Modifier.fillMaxWidth()
             .background(MaterialTheme.colorScheme.surfaceContainer)
-            .padding(horizontal = 12.dp, vertical = 3.dp)
+            .padding(horizontal = 16.dp, vertical = 8.dp)
     ) {
         FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
             itemVerticalAlignment = Alignment.CenterVertically,
         ) {
             Box(
@@ -145,6 +162,14 @@ private fun MidiStatusBar(state: AppState) {
             }
             BarToggle("Octave numbers", settings.showOctaveNumbers, enabled = settings.showVirtualKeyboard) {
                 state.updateSettings(settings.copy(showOctaveNumbers = !settings.showOctaveNumbers))
+            }
+            Text("·", style = small, color = muted)
+            SoundOutputMenu(state)
+            if (state.mode == AppMode.PLAYER) {
+                val ps = state.playerSettings
+                BarToggle("Next-key hint", ps.hintNextKeys, enabled = settings.showVirtualKeyboard) {
+                    state.updatePlayerSettings(ps.copy(hintNextKeys = !ps.hintNextKeys))
+                }
             }
             if (state.detectStep != DetectStep.OFF) {
                 Text(
@@ -214,6 +239,64 @@ private fun KeysMenu(keys: Int, enabled: Boolean, onSelect: (Int) -> Unit) {
                     onClick = { onSelect(k.keys); open = false },
                 )
             }
+        }
+    }
+}
+
+/** Top-left app mode picker: Note feeder / Note player. */
+@Composable
+private fun ModeSelector(state: AppState) {
+    var open by remember { mutableStateOf(false) }
+    Box {
+        TextButton(onClick = { open = true }, modifier = Modifier.padding(start = 8.dp)) {
+            Text("${state.mode.label} ▾", fontWeight = FontWeight.Bold)
+        }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            AppMode.entries.forEach { m ->
+                DropdownMenuItem(
+                    text = {
+                        Column {
+                            Text(m.label, fontWeight = if (m == state.mode) FontWeight.Bold else FontWeight.Normal)
+                            Text(m.description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    },
+                    onClick = { state.selectMode(m); open = false },
+                )
+            }
+        }
+    }
+}
+
+/** "Sound: App piano ▾" — where the app's notes and on-screen key taps sound. */
+@Composable
+private fun SoundOutputMenu(state: AppState) {
+    var open by remember { mutableStateOf(false) }
+    val outputs by state.platform.midiOut.devices.collectAsState()
+    val current = state.playerSettings.soundOutput
+    val currentName = if (current == PlayerSettings.APP_PIANO) "App piano" else outputs.firstOrNull { it.id == current }?.name ?: "MIDI device (not connected)"
+    val colors = MaterialTheme.colorScheme
+    Box {
+        Text(
+            "Sound: $currentName ▾",
+            Modifier.clip(RoundedCornerShape(50))
+                .border(1.dp, colors.onSurfaceVariant.copy(alpha = 0.5f), RoundedCornerShape(50))
+                .clickable { state.platform.midiOut.refresh(); open = true }
+                .padding(horizontal = 8.dp, vertical = 2.dp),
+            style = MaterialTheme.typography.labelSmall,
+            color = if (current != PlayerSettings.APP_PIANO && outputs.none { it.id == current }) WrongRed else colors.onSurfaceVariant,
+        )
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            DropdownMenuItem(
+                text = { Text((if (current == PlayerSettings.APP_PIANO) "✓ " else "") + "App piano (built-in samples)") },
+                onClick = { state.selectSoundOutput(PlayerSettings.APP_PIANO); open = false },
+            )
+            outputs.forEach { d ->
+                DropdownMenuItem(
+                    text = { Text((if (current == d.id) "✓ " else "") + "MIDI: ${d.name}") },
+                    onClick = { state.selectSoundOutput(d.id); open = false },
+                )
+            }
+            if (outputs.isEmpty()) DropdownMenuItem(text = { Text("No MIDI outputs found", color = colors.onSurfaceVariant) }, onClick = { open = false })
         }
     }
 }

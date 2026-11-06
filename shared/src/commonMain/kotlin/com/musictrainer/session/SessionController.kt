@@ -65,7 +65,12 @@ class SessionController(
     /** Notes left (including the current one) before the clef changes. */
     val notesUntilClefChange: Int get() = settings.notesPerClef - index % settings.notesPerClef
 
+    /** Increments with every new session (seeds "mix it up" notation styles). */
+    var sessionNumber by mutableIntStateOf(0)
+        private set
+
     fun start(newSettings: Settings) {
+        sessionNumber++
         job?.cancel()
         settings = newSettings
         index = 0

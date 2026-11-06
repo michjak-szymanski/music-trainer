@@ -43,6 +43,22 @@ class PianoSynthTest {
     }
 
     @Test
+    fun releasedNotesFadeOutQuickly() {
+        val rate = 32_000
+        val long = ShortArray(rate * 5) { (sin(2 * PI * 440 * it / rate) * 12_000).toInt().toShort() } // 5 s, no decay
+        val synth = PianoSynth()
+        synth.setSamples(PianoSamples(rate, mapOf(69 to long)))
+        synth.noteOn(69)
+        val held = ShortArray(4410); synth.render(held)
+        assertTrue(held.maxOf { abs(it.toInt()) } > 5000, "sounds while held")
+        synth.noteOff(69)
+        synth.render(ShortArray(PianoSynth.SAMPLE_RATE / 2)) // 0.5 s after release
+        val after = ShortArray(4410); synth.render(after)
+        assertTrue(after.maxOf { abs(it.toInt()) } < 50, "silent after release, got ${after.maxOf { abs(it.toInt()) }}")
+        assertTrue(synth.isIdle)
+    }
+
+    @Test
     fun parsesWav() {
         val data = shortArrayOf(1, -2, 300)
         val bytes = ByteArray(44 + 6)

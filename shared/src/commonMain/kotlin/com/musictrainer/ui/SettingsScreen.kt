@@ -23,6 +23,12 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import kotlin.math.roundToInt
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.material3.RadioButton
+import com.musictrainer.player.PlayerSettings
+import com.musictrainer.model.AppTheme
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.runtime.collectAsState
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -62,10 +68,14 @@ fun SettingsScreen(state: AppState) {
     val s = state.settings
     fun set(new: Settings) = state.updateSettings(new)
 
+    val scroll = rememberScrollState()
+    Box(Modifier.fillMaxSize()) {
     Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
+        Modifier.fillMaxSize().dragToScroll(scroll).verticalScroll(scroll).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
+        GeneralSettings(state)
+        NotationStyleSection(s.notationStyle) { set(s.copy(notationStyle = it)) }
         Text(
             "Changing practice settings starts a new session.",
             style = MaterialTheme.typography.bodySmall,
@@ -198,10 +208,12 @@ fun SettingsScreen(state: AppState) {
             Text("Reset practice settings to defaults")
         }
     }
+    ColumnScrollbar(scroll)
+    }
 }
 
 @Composable
-private fun Section(title: String, content: @Composable () -> Unit) {
+internal fun Section(title: String, content: @Composable () -> Unit) {
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(title, style = MaterialTheme.typography.titleMedium)
@@ -227,7 +239,7 @@ private fun NoteStepper(label: String, midi: Int, onChange: (Int) -> Unit) {
 }
 
 @Composable
-private fun SwitchRow(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+internal fun SwitchRow(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         Switch(checked = checked, onCheckedChange = onChange)
         Text(label)
@@ -237,7 +249,7 @@ private fun SwitchRow(label: String, checked: Boolean, onChange: (Boolean) -> Un
 /** − / editable number / + . A typed value is applied on Enter or when the field loses focus. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun NumberStepper(
+internal fun NumberStepper(
     label: String,
     value: Int,
     unit: String,
@@ -295,4 +307,84 @@ private fun NumberField(value: Int, format: (Int) -> String, parse: (String) -> 
             ) { inner() }
         },
     )
+}
+
+/** "Connect Claude" settings: the built-in MCP server (desktop only). */
+@Composable
+internal fun McpSection(state: AppState) {
+    val mcp = state.platform.mcp ?: return
+    val s = state.settings
+    val status by mcp.status.collectAsState()
+    Section("Connect Claude (MCP server)") {
+        Text(
+            "Lets Claude and other MCP clients read your library, session history and recordings (read-only). " +
+                "By default only reachable from this computer.",
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        SwitchRow("Run the MCP server", s.mcpEnabled) { state.updateSettings(s.copy(mcpEnabled = it)) }
+        NumberStepper("Port", s.mcpPort, "", step = 1) { state.updateSettings(s.copy(mcpPort = it)) }
+        SwitchRow("Also allow other devices on the local network", s.mcpLan) { state.updateSettings(s.copy(mcpLan = it)) }
+        if (s.mcpLan) Text(
+            "Anyone on your home/office network can then read this data — there is no password. Connections from " +
+                "outside private networks are refused. Windows may ask once to allow Music Trainer through the firewall.",
+            style = MaterialTheme.typography.bodySmall, color = TimingAmber,
+        )
+        Text(status, color = if (status.startsWith("Running")) CorrectGreen else MaterialTheme.colorScheme.onSurfaceVariant)
+        if (s.mcpEnabled) {
+            Text("Add it to Claude Code with:", style = MaterialTheme.typography.bodySmall)
+            SelectionContainer {
+                Text(
+                    "claude mcp add --transport http music-trainer ${mcp.url(s.mcpPort)}",
+                    fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            val lanUrls = remember(status, s.mcpLan, s.mcpPort) { mcp.lanUrls(s.mcpPort) }
+            if (lanUrls.isNotEmpty()) {
+                Text("From another device on the network:", style = MaterialTheme.typography.bodySmall)
+                SelectionContainer {
+                    Column { lanUrls.forEach { Text(it, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall) } }
+                }
+            }
+        }
+    }
+}
+
+/** Settings shared by both modes, shown at the top of each mode's Settings tab. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+internal fun GeneralSettings(state: AppState) {
+    val settings = state.settings
+    val ps = state.playerSettings
+    Section("General — all modes") {
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), itemVerticalAlignment = Alignment.CenterVertically) {
+            Text("Theme")
+            AppTheme.entries.forEach { t ->
+                FilterChip(selected = settings.theme == t, onClick = { state.updateSettings(settings.copy(theme = t)) }, label = { Text(t.label) })
+            }
+        }
+        Text("Sound of the app's notes and on-screen key taps", style = MaterialTheme.typography.titleSmall)
+        val outputs by state.platform.midiOut.devices.collectAsState()
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            RadioButton(selected = ps.soundOutput == PlayerSettings.APP_PIANO, onClick = { state.selectSoundOutput(PlayerSettings.APP_PIANO) })
+            Text("App piano (built-in samples)")
+        }
+        outputs.forEach { d ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                RadioButton(selected = ps.soundOutput == d.id, onClick = { state.selectSoundOutput(d.id) })
+                Text("MIDI device: ${d.name}")
+            }
+        }
+        if (ps.soundOutput != PlayerSettings.APP_PIANO && outputs.none { it.id == ps.soundOutput }) {
+            Text("The selected MIDI device isn't connected; notes won't sound until it is.", color = WrongRed)
+        }
+        val outError by state.platform.midiOut.error.collectAsState()
+        if (ps.soundOutput != PlayerSettings.APP_PIANO) outError?.let { Text(it, color = WrongRed) }
+        Text(
+            "Used for on-screen keys, the other hand when practising one hand, No hands mode and recordings. " +
+                "MIDI devices are detected automatically, also when plugged in later.",
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        TextButton(onClick = { state.platform.midiOut.refresh() }) { Text("Refresh MIDI devices") }
+    }
+    McpSection(state)
 }

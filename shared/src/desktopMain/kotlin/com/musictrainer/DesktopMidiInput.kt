@@ -29,6 +29,8 @@ class DesktopMidiInput : MidiInput {
     override val devices: StateFlow<List<MidiDeviceStatus>> = _devices
     override val error: StateFlow<String?> = _error
     override val noteOns: SharedFlow<Int> = _noteOns
+    private val _noteOffs = MutableSharedFlow<Int>(extraBufferCapacity = 64)
+    override val noteOffs: SharedFlow<Int> = _noteOffs
 
     private class Opened(val device: MidiDevice, val transmitter: Transmitter)
 
@@ -97,8 +99,10 @@ class DesktopMidiInput : MidiInput {
 
     private inner class NoteReceiver : Receiver {
         override fun send(message: MidiMessage, timeStamp: Long) {
-            if (message is ShortMessage && message.command == ShortMessage.NOTE_ON && message.data2 > 0) {
-                _noteOns.tryEmit(message.data1)
+            if (message !is ShortMessage) return
+            when {
+                message.command == ShortMessage.NOTE_ON && message.data2 > 0 -> _noteOns.tryEmit(message.data1)
+                message.command == ShortMessage.NOTE_OFF || message.command == ShortMessage.NOTE_ON -> _noteOffs.tryEmit(message.data1)
             }
         }
 

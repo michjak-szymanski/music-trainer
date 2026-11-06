@@ -20,6 +20,8 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.size
@@ -100,7 +102,10 @@ fun PracticeScreen(state: AppState) {
         }
 
         Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-            StaffView(s, Modifier.fillMaxSize(), stripeOpacity = state.settings.stripeOpacity / 100f)
+            StaffView(
+                s, Modifier.fillMaxSize(), stripeOpacity = state.settings.stripeOpacity / 100f,
+                style = state.settings.notationStyle.effective(s.sessionNumber),
+            )
             // Results pop in over the staff with a springy scale + fade.
             androidx.compose.animation.AnimatedVisibility(
                 visible = s.phase == Phase.FINISHED && s.lastRecord != null,
@@ -172,6 +177,7 @@ fun PracticeScreen(state: AppState) {
                 high = ui.virtualRange.last,
                 highlights = highlights,
                 onKey = state::onVirtualKey,
+            onKeyUp = state::onVirtualKeyUp,
                 savedHeightDp = state.settings.pianoHeightDp,
                 showNames = ui.showKeyLabels,
                 showOctaves = ui.showOctaveNumbers,
@@ -189,7 +195,7 @@ fun PracticeScreen(state: AppState) {
  * in portrait), the range is split into two stacked rows: upper half on top, lower half below.
  */
 @Composable
-private fun VirtualKeyboard(
+internal fun VirtualKeyboard(
     low: Int,
     high: Int,
     highlights: Map<Int, Color>,
@@ -199,6 +205,7 @@ private fun VirtualKeyboard(
     showOctaves: Boolean,
     maxTotal: Dp,
     onHeightCommitted: (Int) -> Unit,
+    onKeyUp: (Int) -> Unit = {},
 ) {
     val density = LocalDensity.current
     BoxWithConstraints(Modifier.fillMaxWidth()) {
@@ -228,15 +235,15 @@ private fun VirtualKeyboard(
                 onReset = { onHeightCommitted(0) },
             )
             if (!split) {
-                Piano(low, high, highlights, onKey, Modifier.fillMaxWidth().height(total), showNames, showOctaves)
+                Piano(low, high, highlights, onKey, Modifier.fillMaxWidth().height(total), onKeyUp, showNames, showOctaves)
             } else {
                 // Split on the C closest to the middle of the range.
                 val mid = (low + high) / 2
                 val splitC = (((mid + 6) / 12) * 12).coerceIn(low + 1, high)
                 val row = (total - gap) / 2
                 Column(verticalArrangement = Arrangement.spacedBy(gap)) {
-                    Piano(splitC, high, highlights, onKey, Modifier.fillMaxWidth().height(row), showNames, showOctaves)
-                    Piano(low, splitC - 1, highlights, onKey, Modifier.fillMaxWidth().height(row), showNames, showOctaves)
+                    Piano(splitC, high, highlights, onKey, Modifier.fillMaxWidth().height(row), onKeyUp, showNames, showOctaves)
+                    Piano(low, splitC - 1, highlights, onKey, Modifier.fillMaxWidth().height(row), onKeyUp, showNames, showOctaves)
                 }
             }
         }
@@ -299,9 +306,9 @@ internal fun ResultsCard(record: SessionRecord, onRestart: () -> Unit) {
     // Score counts up from 0 when the card appears.
     val shownScore = remember(record) { Animatable(0f) }
     LaunchedEffect(record) { shownScore.animateTo(record.score.toFloat(), tween(900, easing = FastOutSlowInEasing)) }
-    Card(Modifier.widthIn(max = 460.dp).padding(16.dp)) {
+    Card(Modifier.widthIn(max = 460.dp).padding(8.dp)) {
         Column(
-            Modifier.padding(28.dp).fillMaxWidth(),
+            Modifier.verticalScroll(rememberScrollState()).padding(20.dp).fillMaxWidth(),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {

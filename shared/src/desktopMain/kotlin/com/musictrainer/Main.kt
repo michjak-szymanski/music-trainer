@@ -2,6 +2,7 @@ package com.musictrainer
 
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
@@ -31,6 +32,10 @@ private class DesktopFileStore(private val dir: File) : FileStore {
         tmp.writeText(content)
         Files.move(tmp.toPath(), File(dir, name).toPath(), StandardCopyOption.REPLACE_EXISTING)
     }
+
+    override fun delete(name: String) {
+        File(dir, name).delete()
+    }
 }
 
 private val dateFormat = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm").withZone(ZoneId.systemDefault())
@@ -38,23 +43,37 @@ private val dateFormat = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm").withZon
 fun main() = application {
     val midi = remember { DesktopMidiInput().also { it.start() } }
     val sound = remember { DesktopKeySound() }
+    val midiOut = remember { DesktopMidiOutput() }
+    val store = remember {
+        DesktopFileStore(
+            System.getenv("MUSIC_TRAINER_HOME")?.let(::File)
+                ?: File(System.getProperty("user.home"), ".music-trainer")
+        )
+    }
+    val mcp = remember { McpServer(store, System.getProperty("jpackage.app-version") ?: "dev") }
+    // The theme chosen in Settings (null until the app reports it): drives the title bar colour.
+    val appDark = remember { mutableStateOf<Boolean?>(null) }
     val platform = remember {
         Platform(
             name = "Desktop",
             midi = midi,
-            store = DesktopFileStore(
-                System.getenv("MUSIC_TRAINER_HOME")?.let(::File)
-                    ?: File(System.getProperty("user.home"), ".music-trainer")
-            ),
+            store = store,
             now = System::currentTimeMillis,
             formatDate = { dateFormat.format(Instant.ofEpochMilli(it)) },
             sound = sound,
+            files = DesktopMusicFiles(),
+            midiOut = midiOut,
+            mcp = mcp,
+            onDarkTheme = { appDark.value = it },
+            touchKeyboard = WindowsTouchKeyboard,
         )
     }
     Window(
         onCloseRequest = {
             midi.stop()
             sound.release()
+            midiOut.close()
+            mcp.stop()
             exitApplication()
         },
         title = "Music Trainer",
@@ -62,7 +81,7 @@ fun main() = application {
         icon = painterResource(Res.drawable.app_icon),
         state = rememberWindowState(width = 1100.dp, height = 780.dp),
     ) {
-        val dark = isSystemInDarkTheme()
+        val dark = appDark.value ?: isSystemInDarkTheme()
         LaunchedEffect(dark) {
             val colors = appColorScheme(dark)
             // Noticeably darker than the tab row below it, so the draggable title bar stands out.

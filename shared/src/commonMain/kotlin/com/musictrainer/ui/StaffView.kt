@@ -56,6 +56,8 @@ private const val FLAT = ""
 
 val CorrectGreen = Color(0xFF2E9E4F)
 val WrongRed = Color(0xFFD93A3A)
+/** Right key, wrong timing (early/late, or held too short/long). */
+val TimingAmber = Color(0xFFE08A00)
 private val Gold = Color(0xFFF2B705)
 
 /** Lowest / highest staff positions any note of the current settings can reach. */
@@ -75,13 +77,19 @@ private fun positionBounds(settings: Settings): Pair<Int, Int> {
 }
 
 @Composable
-fun StaffView(session: SessionController, modifier: Modifier = Modifier, stripeOpacity: Float = 0.07f) {
+fun StaffView(
+    session: SessionController,
+    modifier: Modifier = Modifier,
+    stripeOpacity: Float = 0.07f,
+    style: com.musictrainer.model.NotationStyle = com.musictrainer.model.NotationStyle(),
+) {
     val textMeasurer = rememberTextMeasurer()
-    val bravura = FontFamily(Font(Res.font.bravura))
+    val bravura = musicFont(style.font)
+    val palette = sheetPalette(style.colors)
     val settings = session.settings
     val bounds = remember(settings) { positionBounds(settings) }
-    val ink = MaterialTheme.colorScheme.onSurface
-    val faded = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f)
+    val ink = palette.ink
+    val faded = palette.ink.copy(alpha = 0.45f)
     // Reading-position stripe behind the current note: accent while waiting, green/red after answering.
     val stripeColor by animateColorAsState(
         when (session.phase) {
@@ -114,7 +122,11 @@ fun StaffView(session: SessionController, modifier: Modifier = Modifier, stripeO
         if (scroll.value > 0f) scroll.animateTo(0f, tween(350, easing = FastOutSlowInEasing))
     }
 
+    // Clef switch animation (instant for the first clef shown).
+    val clefChange = remember(session.clef) { Animatable(if (session.index == 0) 1f else 0f) }
+    LaunchedEffect(session.clef) { clefChange.animateTo(1f, spring(dampingRatio = 0.55f, stiffness = 350f)) }
     Canvas(modifier) {
+        palette.paper?.let { drawRect(it) }
         val note = session.note ?: return@Canvas
         val clef = session.clef
         val phase = session.phase
@@ -160,34 +172,29 @@ fun StaffView(session: SessionController, modifier: Modifier = Modifier, stripeO
             cornerRadius = CornerRadius(space * 0.6f),
         )
 
-        // Previously answered notes, newest nearest the current note.
+        // Previously answered notes, newest nearest the current note. Only notes in the current clef are
+        // shown, so everything on the staff reads in the clef printed at its start.
         val trail = session.trail
-        var leftmostClef = clef
         for (k in 1..trail.size) {
             val x = xBack(k)
             val a = alphaAt(x)
             if (a <= 0f) break
             val item = trail[trail.size - k]
-            val newer = if (k == 1) clef else trail[trail.size - k + 1].clef
-            if (newer != item.clef) {
-                // Clef change between this note and the next one: small clef, as in printed music.
-                val cx = x + spacing * 0.5f - space * 0.9f
-                val ca = alphaAt(cx)
-                if (newer == Clef.TREBLE) glyph(textMeasurer, bravura, G_CLEF, cx, y(2), glyphPx * 0.75f, ink.copy(alpha = ca))
-                else glyph(textMeasurer, bravura, F_CLEF, cx, y(6), glyphPx * 0.75f, ink.copy(alpha = ca))
-            }
+            if (item.clef != clef) break
             val color = (if (item.correct) CorrectGreen else WrongRed).copy(alpha = a)
             drawNote(textMeasurer, bravura, item.note, item.clef, x, ::y, space, glyphPx, color, lineWidth, 1f)
             if (!item.correct) {
                 drawLabel(textMeasurer, item.note.name, x, y(max(item.note.staffPosition(item.clef), 8) + 3), space * 1.1f, color)
             }
-            if (a >= 0.5f) leftmostClef = item.clef
         }
 
-        // Leading clef: the clef of the leftmost visible note.
+        // Leading clef: always the clef of the current note; pops in when it changes.
         val clefX = x0 + space * 0.6f
-        if (leftmostClef == Clef.TREBLE) glyph(textMeasurer, bravura, G_CLEF, clefX, y(2), glyphPx, ink)
-        else glyph(textMeasurer, bravura, F_CLEF, clefX, y(6), glyphPx, ink)
+        val ck = clefChange.value
+        val clefInk = ink.copy(alpha = ink.alpha * ck.coerceIn(0f, 1f))
+        val clefSize = glyphPx * (0.6f + 0.4f * ck)
+        if (clef == Clef.TREBLE) glyph(textMeasurer, bravura, G_CLEF, clefX, y(2), clefSize, clefInk)
+        else glyph(textMeasurer, bravura, F_CLEF, clefX, y(6), clefSize, clefInk)
 
         val pos = note.staffPosition(clef)
         val noteColor = when (phase) {

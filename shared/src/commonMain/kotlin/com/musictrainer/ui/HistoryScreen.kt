@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -46,8 +47,11 @@ fun HistoryScreen(state: AppState) {
         return
     }
 
+    val listState = rememberLazyListState()
+    Box(Modifier.fillMaxSize()) {
     LazyColumn(
-        Modifier.fillMaxSize(),
+        Modifier.fillMaxSize().dragToScroll(listState),
+        state = listState,
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
@@ -72,6 +76,8 @@ fun HistoryScreen(state: AppState) {
         items(history, key = { it.timestamp }) { rec ->
             Box(Modifier.animateItem()) { HistoryRow(rec, state.platform.formatDate(rec.timestamp)) }
         }
+    }
+    ListScrollbar(listState)
     }
 
     if (confirmClear) {

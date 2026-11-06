@@ -1,7 +1,9 @@
 package com.musictrainer.ui
 
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
@@ -53,6 +55,7 @@ fun Piano(
     highlights: Map<Int, Color>,
     onKey: (Int) -> Unit,
     modifier: Modifier = Modifier,
+    onKeyUp: (Int) -> Unit = {},
     showNames: Boolean = false,
     showOctaves: Boolean = false,
 ) {
@@ -61,8 +64,13 @@ fun Piano(
     val tm = rememberTextMeasurer()
     Canvas(
         modifier.pointerInput(lo, hi) {
-            detectTapGestures { p ->
-                KeyLayout(lo, hi, size.width.toFloat(), size.height.toFloat()).keyAt(p)?.let(onKey)
+            // Press plays the key, lifting the finger releases it (damper).
+            awaitEachGesture {
+                val down = awaitFirstDown()
+                val key = KeyLayout(lo, hi, size.width.toFloat(), size.height.toFloat()).keyAt(down.position)
+                key?.let(onKey)
+                waitForUpOrCancellation()
+                key?.let(onKeyUp)
             }
         }
     ) {

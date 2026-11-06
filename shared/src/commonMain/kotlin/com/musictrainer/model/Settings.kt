@@ -4,8 +4,43 @@ import kotlinx.serialization.Serializable
 import kotlin.math.max
 import kotlin.math.min
 
+/** SMuFL music fonts bundled with the app. */
+@Serializable
+enum class NotationFont(val label: String) {
+    BRAVURA("Bravura (engraved)"), LELAND("Leland (MuseScore)"), PETALUMA("Petaluma (handwritten)"),
+}
+
+/** Colours of the sheet. */
+@Serializable
+enum class SheetColors(val label: String) { THEME("Follow the app theme"), PAPER("Paper"), CONTRAST("High contrast") }
+
+/** How the music is drawn; separate per mode. */
+@Serializable
+data class NotationStyle(
+    val font: NotationFont = NotationFont.BRAVURA,
+    val colors: SheetColors = SheetColors.THEME,
+    /** A random font and colours for every session / run. */
+    val mixItUp: Boolean = false,
+)
+
+/** App colour theme. */
+@Serializable
+enum class AppTheme(val label: String) { SYSTEM("System"), LIGHT("Light"), DARK("Dark") }
+
+/** The app's modes, picked in the top-left corner. */
+@Serializable
+enum class AppMode(val label: String, val description: String) {
+    FEEDER("Note feeder", "Random notes, one at a time"),
+    PLAYER("Note player", "Play pieces from MIDI files"),
+}
+
 @Serializable
 data class Settings(
+    val appMode: AppMode = AppMode.FEEDER,
+    /** Colour theme for the whole app (both modes). */
+    val theme: AppTheme = AppTheme.SYSTEM,
+    /** Notation look in the Note feeder. */
+    val notationStyle: NotationStyle = NotationStyle(),
     /** Lowest note that can be asked (MIDI number). Default C2. */
     val lowestMidi: Int = 36,
     /** Highest note that can be asked (MIDI number). Default C7 -> 61 keys. */
@@ -37,6 +72,11 @@ data class Settings(
     val showOctaveNumbers: Boolean = false,
     /** Range of the user's physical MIDI keyboard (set by size preset or detection). */
     val keyboardLowest: Int = 36,
+    /** Built-in MCP server for Claude and other MCP clients (desktop). */
+    val mcpEnabled: Boolean = false,
+    val mcpPort: Int = 7432,
+    /** Also reachable from other devices on the local network (private addresses only). */
+    val mcpLan: Boolean = false,
     val keyboardHighest: Int = 96,
 ) {
     val rangeKeys: Int get() = highestMidi - lowestMidi + 1
@@ -70,6 +110,7 @@ data class Settings(
             sessionLength = sessionLength.coerceIn(5, 1000),
             mistakePauseMs = mistakePauseMs.coerceIn(MIN_PAUSE_MS, MAX_PAUSE_MS),
             stripeOpacity = stripeOpacity.coerceIn(0, MAX_STRIPE_OPACITY),
+            mcpPort = mcpPort.coerceIn(1024, 65535),
             virtualKeys = if (KeyboardSize.entries.any { it.keys == virtualKeys }) virtualKeys else 0,
             keyboardLowest = min(keyboardLowest, keyboardHighest).coerceIn(0, 127),
             keyboardHighest = max(keyboardLowest, keyboardHighest).coerceIn(0, 127),
