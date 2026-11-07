@@ -1,9 +1,9 @@
 # Post-processes the MSI built by jpackage:
-#  1. Closes a running Music Trainer before anything is replaced. The app doesn't answer the Restart Manager's
+#  1. Closes a running Musigium (or the older Music Trainer) before anything is replaced. The app doesn't answer the Restart Manager's
 #     close request, which left updates stuck on "Files in use". jpackage schedules RemoveExistingProducts very
 #     early (the old version is uninstalled first, with its own files-in-use check), so taskkill must run before
 #     that. The Finish page can start the app again.
-#  2. Adds a "Launch Music Trainer" checkbox (checked by default) to the final page of the installer and
+#  2. Adds a "Launch Musigium" checkbox (checked by default) to the final page of the installer and
 #     starts the installed app when Finish is clicked with the box ticked.
 #
 # jpackage has no option for this, but its WiX UI already contains the standard ExitDialog
@@ -12,8 +12,10 @@
 # Safe to run more than once.
 param(
     [Parameter(Mandatory = $true)][string]$Msi,
-    [string]$ExeName = "MusicTrainer.exe",
-    [string]$AppName = "Music Trainer"
+    [string]$ExeName = "Musigium.exe",
+    [string]$AppName = "Musigium",
+    # Earlier names of the app's exe, closed as well when upgrading from them.
+    [string[]]$OldExeNames = @("MusicTrainer.exe")
 )
 
 $ErrorActionPreference = "Stop"
@@ -48,7 +50,8 @@ if (-not (Test-Action "CloseRunningApp")) {
     # taskkill.exe (SystemFolder is known from the start), then a type-50 action runs that exe.
     # Type 114 = 50 (exe named by a property) + 64 (ignore the exit code: nothing to close is fine).
     Invoke-Sql "INSERT INTO CustomAction (Action, Type, Source, Target) VALUES ('SetTaskkillPath', 51, 'MT_TASKKILL', '[SystemFolder]taskkill.exe')" | Out-Null
-    Invoke-Sql "INSERT INTO CustomAction (Action, Type, Source, Target) VALUES ('CloseRunningApp', 114, 'MT_TASKKILL', '/F /T /IM $ExeName')" | Out-Null
+    $images = (@($ExeName) + $OldExeNames | ForEach-Object { "/IM $_" }) -join " "
+    Invoke-Sql "INSERT INTO CustomAction (Action, Type, Source, Target) VALUES ('CloseRunningApp', 114, 'MT_TASKKILL', '/F /T $images')" | Out-Null
     Invoke-Sql "INSERT INTO InstallExecuteSequence (Action, Condition, Sequence) VALUES ('SetTaskkillPath', '', $($seq - 1))" | Out-Null
     Invoke-Sql "INSERT INTO InstallExecuteSequence (Action, Condition, Sequence) VALUES ('CloseRunningApp', '', $seq)" | Out-Null
     Write-Host "Added 'close running app' step (sequence $seq) to $Msi"
@@ -71,7 +74,7 @@ while ($rec = $view.GetType().InvokeMember("Fetch", "InvokeMethod", $null, $view
     }
 }
 [void]$view.GetType().InvokeMember("Close", "InvokeMethod", $null, $view, $null)
-if (-not $exeKey) { throw "MusicTrainer.exe not found in the MSI File table" }
+if (-not $exeKey) { throw "$ExeName not found in the MSI File table" }
 
 Invoke-Sql "INSERT INTO Property (Property, Value) VALUES ('WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT', 'Launch $AppName')" | Out-Null
 Invoke-Sql "INSERT INTO Property (Property, Value) VALUES ('WIXUI_EXITDIALOGOPTIONALCHECKBOX', '1')" | Out-Null
@@ -83,4 +86,4 @@ Invoke-Sql ("INSERT INTO ControlEvent (Dialog_, Control_, Event, Argument, Condi
 
 [void]$db.GetType().InvokeMember("Commit", "InvokeMethod", $null, $db, $null)
 [System.Runtime.InteropServices.Marshal]::ReleaseComObject($db) | Out-Null
-Write-Host "Added 'Launch Music Trainer' option to $Msi"
+Write-Host "Added 'Launch $AppName' option to $Msi"

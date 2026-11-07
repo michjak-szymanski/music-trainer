@@ -43,6 +43,15 @@ class MainActivity : ComponentActivity() {
         val files = AndroidMusicFiles(this) // registers the folder picker; must happen in onCreate
         val dateFormat = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm").withZone(ZoneId.systemDefault())
         val platform = Platform(
+            openFile = { id ->
+                runCatching {
+                    startActivity(
+                        android.content.Intent(android.content.Intent.ACTION_VIEW)
+                            .setDataAndType(android.net.Uri.parse(id), "application/octet-stream")
+                            .addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+                    )
+                }
+            },
             name = "Android",
             midi = midi,
             store = AndroidFileStore(filesDir),

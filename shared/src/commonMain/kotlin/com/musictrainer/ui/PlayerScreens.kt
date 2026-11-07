@@ -99,10 +99,27 @@ fun formatDuration(ms: Long): String {
 /** Practice tab of the Note player: library → piece → sheet. */
 @Composable
 fun PlayerPracticeScreen(state: AppState) {
-    when (state.playerPage) {
-        PlayerPage.LIBRARY -> LibraryScreen(state)
-        PlayerPage.DETAIL -> PieceDetailScreen(state)
-        PlayerPage.SHEET -> SheetScreen(state)
+    if (state.playerPage == PlayerPage.LIBRARY || state.openPiece == null) { LibraryScreen(state); return }
+    Column(Modifier.fillMaxSize()) {
+        // ← Library | Play · Professor · Doctor, for the open piece.
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            TextButton(onClick = state::backToLibrary, modifier = Modifier.padding(start = 8.dp, end = 16.dp)) { Text("← Library") }
+            androidx.compose.material3.SecondaryTabRow(selectedTabIndex = state.pieceView.ordinal, modifier = Modifier.weight(1f)) {
+                com.musictrainer.PieceView.entries.forEach { v ->
+                    Tab(selected = state.pieceView == v, onClick = { state.showPieceView(v) }, text = { Text(v.title) })
+                }
+            }
+        }
+        Box(Modifier.weight(1f).fillMaxWidth()) {
+            when (state.pieceView) {
+                com.musictrainer.PieceView.PROFESSOR -> ProfessorScreen(state)
+                com.musictrainer.PieceView.DOCTOR -> DoctorScreen(state)
+                com.musictrainer.PieceView.PIECE -> when (state.playerPage) {
+                    PlayerPage.SHEET -> SheetScreen(state)
+                    else -> PieceDetailScreen(state)
+                }
+            }
+        }
     }
 }
 
@@ -303,7 +320,6 @@ private fun PieceDetailScreen(state: AppState) {
         val wide = maxWidth > 1000.dp
         Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp), itemVerticalAlignment = Alignment.CenterVertically) {
-                TextButton(onClick = state::backToLibrary) { Text("← Library") }
                 Text(piece.title, style = MaterialTheme.typography.headlineSmall)
                 FormatBadge(piece.format)
             }
@@ -335,12 +351,16 @@ private fun PieceDetailScreen(state: AppState) {
                                 enabled = hands != HandsMode.NONE,
                             )
                         }
-                        NumberStepper("Tempo", state.chosenBpm, "BPM (file: ${score.bpm})", step = 2) { state.chosenBpm = it.coerceIn(20, 400) }
+                        NumberStepper("Tempo", state.chosenBpm, "BPM · ${pct(state.chosenBpm, score.bpm)}% of ${score.bpm}", step = 2) { state.chosenBpm = it.coerceIn(20, 400) }
                         if (state.chosenBpm != score.bpm) TextButton(onClick = { state.chosenBpm = score.bpm }) { Text("Reset") }
                         ZoomControl(state)
                         Spacer(Modifier.width(8.dp))
                         Button(onClick = { state.play(hands) }) {
                             Text(if (hands == HandsMode.NONE) "▶  Listen" else "▶  Play  ·  ${hands.label}")
+                        }
+                        val open = state.platform.openFile
+                        if (piece.format == FORMAT_MUSESCORE && !piece.builtIn && open != null) {
+                            OutlinedButton(onClick = { open(piece.id) }) { Text("Open in MuseScore") }
                         }
                     }
                 }
@@ -357,7 +377,7 @@ private fun PieceDetailScreen(state: AppState) {
                 Card(Modifier.weight(1f).fillMaxWidth()) {
                     ScoreView(score, currentStep = 0, modifier = Modifier.fillMaxSize(), stripeOpacity = 0f, zoom = state.playerSettings.zoomPercent / 100f, style = state.playerSettings.notationStyle)
                 }
-                PiecePanel(state, sessions, Modifier.fillMaxWidth().heightIn(max = 280.dp))
+                PiecePanel(state, sessions, Modifier.fillMaxWidth().heightIn(max = 360.dp))
             }
         }
     }
@@ -369,13 +389,20 @@ private fun PiecePanel(state: AppState, sessions: List<PlayerRecord>, modifier: 
     val piece = state.openPiece ?: return
     val recordings = state.recordings.filter { it.pieceId == piece.id }
     var tab by remember(piece.id) { mutableStateOf(0) }
+    val score = state.openScore
+    val marks = state.marksOf(piece.id)
     Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        PrimaryTabRow(selectedTabIndex = tab) {
+        androidx.compose.material3.PrimaryScrollableTabRow(selectedTabIndex = tab, edgePadding = 0.dp) {
             Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text("Sessions (${sessions.size})") })
             Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text("Recordings (${recordings.size})") })
+            Tab(selected = tab == 2, onClick = { tab = 2 }, text = { Text("Notes (${marks.size})") })
         }
-        if (tab == 0) PieceSessions(state, sessions, Modifier.weight(1f).fillMaxWidth())
-        else PieceRecordings(state, recordings, Modifier.weight(1f).fillMaxWidth())
+        val body = Modifier.weight(1f).fillMaxWidth()
+        when (tab) {
+            0 -> PieceSessions(state, sessions, body)
+            1 -> PieceRecordings(state, recordings, body)
+            else -> MarksPanel(state, piece.id, score?.measures?.size ?: 1, body, score)
+        }
     }
 }
 
@@ -490,7 +517,8 @@ private fun PlayerRecordRow(r: PlayerRecord, date: String, showTitle: Boolean, o
                 if (!r.completed) Text("stopped early", color = WrongRed)
             }
             Text(
-                "${r.hands.label} · ${r.style.label} · ${r.bpm} BPM${if (r.bpm != r.fileBpm) " (file ${r.fileBpm})" else ""} · ${formatDuration(r.durationMs)}",
+                "${r.hands.label} · ${r.style.label} · ${r.bpm} BPM (${r.setTempoPercent}% of ${r.fileBpm})" +
+                    (if (r.actualTempoPercent > 0) " · actual ${r.actualTempoPercent}%" else "") + " · ${formatDuration(r.durationMs)}",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
@@ -516,10 +544,16 @@ private fun SheetScreen(state: AppState) {
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                 itemVerticalAlignment = Alignment.CenterVertically,
             ) {
-                TextButton(onClick = state::leaveSheet) { Text("← Back") }
-                Text("${p.hands.label} · ${if (p.hands == HandsMode.NONE) "listening" else p.style.label}", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                if (!p.running) NumberStepper("Tempo", p.bpm, "BPM", step = 2) { p.bpm = it.coerceIn(20, 400) }
-                else Text("${p.bpm} BPM", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                TextButton(onClick = state::leaveSheet) { Text("← Hands & tempo") }
+                // Hands, switchable at any time without moving in the piece.
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    listOf(HandsMode.BOTH to "Both", HandsMode.RIGHT to "Right", HandsMode.LEFT to "Left", HandsMode.NONE to "Listen").forEach { (h, l) ->
+                        FilterChip(selected = p.hands == h, onClick = { p.switchHands(h) }, label = { Text(l) }, modifier = Modifier.padding(end = 4.dp))
+                    }
+                    if (p.hands != HandsMode.NONE) Text("· ${p.style.label}", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 4.dp))
+                }
+                if (!p.running) NumberStepper("Tempo", p.bpm, "BPM · ${pct(p.bpm, score.bpm)}%", step = 2) { p.bpm = it.coerceIn(20, 400) }
+                else Text("${p.bpm} BPM · ${pct(p.bpm, score.bpm)}%", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (p.hands != HandsMode.NONE) {
                     HoverHint("Correct notes: the right key for the chord.") { RollingCounter(p.hits, "✓ ", CorrectGreen) }
                     HoverHint("Wrong notes: keys that weren't in the chord you had to play.") { RollingCounter(p.wrong, "✗ ", WrongRed) }
@@ -537,6 +571,9 @@ private fun SheetScreen(state: AppState) {
                     }
                 }
                 ZoomControl(state)
+                LoopControls(state, score)
+                MarksMenu(state, score, bookmarks = true)
+                MarksMenu(state, score, bookmarks = false)
                 if (p.hands != HandsMode.NONE) FilterChip(
                     selected = state.recordEnabled,
                     onClick = { state.recordEnabled = !state.recordEnabled },
@@ -560,6 +597,63 @@ private fun SheetScreen(state: AppState) {
                 }
             }
 
+            // The note under the mouse while choosing a loop (for the preview on the sheet).
+            var hoverStep by remember { mutableStateOf<Int?>(null) }
+            LaunchedEffect(state.loopPick == null) { if (state.loopPick == null) hoverStep = null }
+            // Choosing a loop's bars on the sheet: what to click next.
+            state.loopPick?.let { pick ->
+                Row(
+                    Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)).padding(horizontal = 16.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Text(
+                        (if (pick.editId != null) "🔁 Edit loop: " else "🔁 New loop: ") +
+                            if (pick.firstStep == null) "click the note where the loop starts" else "now click the note where it ends",
+                        modifier = Modifier.weight(1f),
+                    )
+                    TextButton(onClick = state::cancelLoopPick) { Text("Cancel") }
+                }
+            }
+            // Editing a loop: move its start, its end, or the whole loop bar by bar.
+            state.loopEditId?.let { id ->
+                val loop = state.loopsOf(p.pieceId).firstOrNull { it.id == id }
+                if (loop == null) { state.doneLoopEdit(); return@let }
+                FlowRow(
+                    Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)).padding(horizontal = 16.dp, vertical = 4.dp),
+                    itemVerticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Text("🔁 " + state.loopPlace(loop), fontWeight = FontWeight.Bold)
+                    @Composable
+                    fun Nudge(label: String, part: com.musictrainer.AppState.LoopPart) {
+                        Text(label, modifier = Modifier.padding(start = 10.dp))
+                        OutlinedButton(onClick = { state.nudgeLoop(part, -1) }, contentPadding = PaddingValues(horizontal = 10.dp)) { Text("◀") }
+                        OutlinedButton(onClick = { state.nudgeLoop(part, 1) }, contentPadding = PaddingValues(horizontal = 10.dp)) { Text("▶") }
+                    }
+                    Nudge("Start", com.musictrainer.AppState.LoopPart.START)
+                    Nudge("End", com.musictrainer.AppState.LoopPart.END)
+                    Nudge("Move", com.musictrainer.AppState.LoopPart.WHOLE)
+                    Text("· one note per click · or click a note on the sheet to set the start (before it) or the end", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 10.dp))
+                    TextButton(onClick = state::cancelLoopEdit) { Text("Cancel") }
+                    Button(onClick = state::doneLoopEdit) { Text("Done") }
+                }
+            }
+            // Choosing a fragment for a note / bookmark: what to click next.
+            state.fragmentPick?.let { pick ->
+                Row(
+                    Modifier.fillMaxWidth().background(TimingAmber.copy(alpha = 0.15f)).padding(horizontal = 16.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Text(
+                        (if (pick.bookmark) "🔖 New bookmark: " else "📝 New note: ") + "click the note on the sheet",
+                        modifier = Modifier.weight(1f),
+                    )
+                    TextButton(onClick = state::cancelFragmentPick) { Text("Cancel") }
+                }
+            }
+            state.pendingFragment?.let { (pick, range) ->
+                FragmentTextDialog(pick.bookmark, describeFragment(score, range.first, range.last), onDismiss = state::cancelFragmentPick, onSave = state::saveFragment)
+            }
+
             // After a wrong key, that key is shown on the staff as a red note (and flashes red on the keyboard).
             val flash = remember { Animatable(0f) }
             LaunchedEffect(p.wrongCount) { if (p.wrongCount > 0) { flash.snapTo(1f); flash.animateTo(0f, tween(1400)) } }
@@ -570,9 +664,52 @@ private fun SheetScreen(state: AppState) {
                 ScoreView(
                     score, currentStep = p.cursorStep, cursorFraction = p.cursorFraction, noteColors = colors,
                     stripeOpacity = ps.stripeOpacity / 100f, modifier = Modifier.fillMaxSize(),
-                    onStepClick = p::seek,
+                    // While choosing a fragment, clicks pick notes instead of moving the start point.
+                    onStepClick = { step ->
+                        when {
+                            state.loopPick != null -> state.pickLoopStep(step)
+                            state.loopEditId != null -> state.clickLoopStep(step)
+                            state.fragmentPick != null -> state.pickStep(step)
+                            else -> p.seek(step)
+                        }
+                    },
                     zoom = ps.zoomPercent / 100f,
                     style = ps.notationStyle.effective(p.pieceId.hashCode() * 31 + p.runNumber),
+                    loopMarks = state.loopsOf(p.pieceId).filter { it.id != state.loopPick?.editId }.map { l ->
+                        if (l.id == state.loopEditId) LoopMark((l.startBar - 1)..(l.endBar - 1), "Editing: " + state.loopTitle(l), true, MaterialTheme.colorScheme.primary, steps = state.stepsOf(l))
+                        else LoopMark(
+                            (l.startBar - 1)..(l.endBar - 1),
+                            state.loopTitle(l) + when {
+                                !l.enabled -> "  · off — click to turn on"
+                                !state.loopsActive -> "  · looping paused (🔁)"
+                                else -> ""
+                            },
+                            l.enabled && state.loopsActive, steps = state.stepsOf(l), id = l.id,
+                        )
+                    } +
+                        // Choosing a new loop: where it would start (under the mouse), then the span to the end.
+                        listOfNotNull(state.loopPick?.let { pick ->
+                            val first = pick.firstStep
+                            val h = hoverStep
+                            when {
+                                first == null && h != null -> LoopMark(0..0, "Loop starts here", true, MaterialTheme.colorScheme.primary, bracket = false, steps = h..h)
+                                first != null -> (h ?: first).let { end ->
+                                    LoopMark(0..0, if (h == null) "Loop starts here" else "Loop ends here", true, MaterialTheme.colorScheme.primary, bracket = false, steps = minOf(first, end)..maxOf(first, end))
+                                }
+                                else -> null
+                            }
+                        }),
+                    onStepHover = if (state.loopPick != null) ({ hoverStep = it }) else null,
+                    // Click a loop's label or bracket to switch it on / off (not while picking or editing).
+                    onLoopClick = if (state.loopPick == null && state.loopEditId == null) ({ id ->
+                        state.loopsOf(p.pieceId).firstOrNull { it.id == id }?.let { l ->
+                            state.updateLoop(l.copy(enabled = !l.enabled))
+                            if (!l.enabled && !state.loopsActive) state.toggleLoopsActive()
+                        }
+                    }) else null,
+                    barNotes = state.marksOf(p.pieceId).filter { !it.isFragment }.map { m -> (m.bar - 1) to ((if (m.bookmark) "🔖 " else "📝 ") + m.text.ifBlank { "Bar ${m.bar}" }) },
+                    fragments = state.marksOf(p.pieceId).filter { it.isFragment }.map { m -> FragmentMark(m.fromStep, m.toStep, (if (m.bookmark) "🔖 " else "📝 ") + m.text.ifBlank { "Bookmark" }) },
+                    pickedStep = state.fragmentPick?.from,
                     wrongNote = p.lastWrong?.takeIf { p.running && flash.value > 0f }?.let { WrongNote(p.currentStep, it, flash.value) },
                 )
                 // Start countdown (N … 0), then the optional one-bar count-in.
@@ -649,6 +786,31 @@ private fun RollingCounter(value: Int, prefix: String, color: Color) {
     }
 }
 
+/** [bpm] in percent of the piece's original [fileBpm]. */
+private fun pct(bpm: Int, fileBpm: Int): Int = if (fileBpm <= 0) 100 else (bpm * 100.0 / fileBpm).roundToInt()
+
+/** Set tempo and the tempo actually reached, both relative to the piece's original tempo. */
+@Composable
+private fun TempoSummary(r: PlayerRecord) {
+    Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text("${r.setTempoPercent}%", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Text("set tempo · ${r.bpm} of ${r.fileBpm} BPM", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        if (r.actualTempoPercent > 0) Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            val ratio = r.actualTempoPercent.toFloat() / r.setTempoPercent.coerceAtLeast(1)
+            Text(
+                "${r.actualTempoPercent}%", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold,
+                color = if (ratio >= 0.9f) CorrectGreen else TimingAmber,
+            )
+            Text(
+                "actual tempo · ≈${(r.fileBpm * r.actualTempoPercent / 100.0).roundToInt()} BPM",
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
 @Composable
 private fun PlayerResultsCard(r: PlayerRecord?, onAgain: () -> Unit, onBack: () -> Unit) {
     // Never taller than the space above the keyboard; scrolls if it still doesn't fit.
@@ -672,7 +834,8 @@ private fun PlayerResultsCard(r: PlayerRecord?, onAgain: () -> Unit, onBack: () 
                     Text("Note length: ${r.lengthErrors}", color = TimingAmber, fontWeight = FontWeight.Bold)
                 }
                 Text("Accuracy ${r.accuracyPercent}%", style = MaterialTheme.typography.titleLarge)
-                Text("${r.hands.label} · ${r.style.label} · ${r.bpm} BPM")
+                Text("${r.hands.label} · ${r.style.label}")
+                TempoSummary(r)
             }
             Spacer(Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -769,6 +932,7 @@ fun PlayerSettingsScreen(state: AppState) {
             SwitchRow("Wait for me: also check rhythm and note lengths at the chosen tempo", s.checkTiming) { set(s.copy(checkTiming = it)) }
             NumberStepper("Countdown before playing (Right / Left / Both hands)", s.countdownSeconds, "s  (0 = off)", step = 1) { set(s.copy(countdownSeconds = it)) }
             SwitchRow("Count in one bar before starting (Follow tempo)", s.countIn) { set(s.copy(countIn = it)) }
+            NumberStepper("Tempo for files without a tempo marking", s.defaultBpm, "BPM", step = 5) { set(s.copy(defaultBpm = it)) }
             SwitchRow("Light up the next keys on the on-screen keyboard", s.hintNextKeys) { set(s.copy(hintNextKeys = it)) }
             NumberStepper("Cursor stripe opacity", s.stripeOpacity, "%  (0 = off)", step = 1) { set(s.copy(stripeOpacity = it)) }
         }

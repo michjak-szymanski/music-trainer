@@ -64,6 +64,92 @@ class PlayerTest {
     }
 
     @Test
+    fun recordsSetAndActualTempoAsPercentOfOriginal() = runTest {
+        val records = ArrayList<PlayerRecord>()
+        val p = player(Sink(), records)
+        p.style = PlayStyle.WAIT; p.hands = HandsMode.RIGHT; p.checkTiming = false
+        p.bpm = 60 // half the file's 120
+        p.start(); runCurrent()
+        // One quarter per second = 60 BPM = 50% of the original tempo.
+        for (m in listOf(72, 74, 76, 77)) { p.onNote(m); runCurrent(); if (m != 77) { advanceTimeBy(1000); runCurrent() } }
+        advanceUntilIdle()
+        val r = records.single()
+        assertEquals(50, r.setTempoPercent)
+        assertTrue(r.actualTempoPercent in 45..55, "actual ${r.actualTempoPercent}%")
+    }
+
+    // Two bars of quarters (right hand only) for the loop tests.
+    private val twoBars = ScoreBuilder.build(
+        MidiParser.parse(MidiWriter.write(listOf(DemoPieces.voice("C5:4 D5:4 E5:4 F5:4 G5:4 A5:4 B5:4 C6:4")), bpm = 120)), "two bars",
+    )
+
+    @Test
+    fun waitModeLoopsBackToTheLoopStart() = runTest {
+        val p = PlayerController(this, { testScheduler.currentTime }, { Sink() }) {}.apply { load(twoBars, "two"); countIn = false }
+        p.style = PlayStyle.WAIT; p.hands = HandsMode.RIGHT; p.checkTiming = false
+        p.loops = listOf(0..3) // repeat bar 1 (its four notes)
+        p.start(); runCurrent()
+        repeat(2) { round ->
+            for (m in listOf(72, 74, 76, 77)) { assertEquals(setOf(m), p.nextKeys, "round $round"); p.onNote(m); runCurrent(); advanceTimeBy(500); runCurrent() }
+            advanceTimeBy(600); runCurrent()
+            assertEquals(setOf(72), p.nextKeys, "back at the loop start, not on to bar 2")
+        }
+        assertEquals(2, p.loopRepeats)
+        assertTrue(p.running)
+        p.loops = emptyList() // looping off: plays on into bar 2
+        for (m in listOf(72, 74, 76, 77)) { p.onNote(m); runCurrent(); advanceTimeBy(500); runCurrent() }
+        assertEquals(setOf(79), p.nextKeys)
+    }
+
+    @Test
+    fun tempoModeLoopsOnTime() = runTest {
+        val p = PlayerController(this, { testScheduler.currentTime }, { Sink() }) {}.apply { load(twoBars, "two"); countIn = false }
+        p.style = PlayStyle.FOLLOW_TEMPO; p.hands = HandsMode.RIGHT
+        p.loops = listOf(4..7) // repeat bar 2
+        p.start(); runCurrent()
+        advanceTimeBy(2000 + 2000 * 2 + 300); runCurrent() // bar 1, then bar 2 three times
+        assertTrue(p.running, "still playing")
+        assertEquals(2, p.loopRepeats)
+        assertTrue(twoBars.steps[p.cursorStep].measure == 1, "cursor stays in bar 2: ${p.cursorStep}")
+        p.stop(record = false)
+        advanceUntilIdle()
+    }
+
+    @Test
+    fun switchingHandsKeepsThePlace() = runTest {
+        val records = ArrayList<PlayerRecord>()
+        val p = PlayerController(this, { testScheduler.currentTime }, { Sink() }) { records += it }.apply { load(twoBars, "two"); countIn = false; countdownSeconds = 5 }
+        p.style = PlayStyle.WAIT; p.hands = HandsMode.RIGHT; p.checkTiming = false
+        // Stopped: the start point stays.
+        p.seek(5); p.switchHands(HandsMode.BOTH); assertEquals(5, p.startStep); assertEquals(HandsMode.BOTH, p.hands)
+        p.switchHands(HandsMode.RIGHT)
+        p.seek(0)
+        p.start(); advanceTimeBy(5100); runCurrent() // countdown
+        for (m in listOf(72, 74)) { p.onNote(m); runCurrent(); advanceTimeBy(600); runCurrent() }
+        val at = p.cursorStep
+        p.switchHands(HandsMode.NONE) // to Listen while playing
+        runCurrent()
+        assertTrue(p.running && p.hands == HandsMode.NONE)
+        assertEquals(at, p.cursorStep, "carries on from the same note")
+        assertTrue(p.countdown == null, "no countdown when switching")
+        assertEquals(1, records.size) // the right-hand part so far was saved
+        p.stop(record = false)
+    }
+
+    @Test
+    fun listenModeLoopsToo() = runTest {
+        val p = PlayerController(this, { testScheduler.currentTime }, { Sink() }) {}.apply { load(twoBars, "two"); countIn = false }
+        p.hands = HandsMode.NONE
+        p.loops = listOf(0..3) // bar 1
+        p.start(); runCurrent()
+        advanceTimeBy(2000 * 2 + 500); runCurrent()
+        assertTrue(p.running, "still playing")
+        assertTrue(p.loopRepeats >= 2, "repeats ${p.loopRepeats}")
+        assertTrue(twoBars.steps[p.cursorStep].measure == 0, "stays in bar 1: ${p.cursorStep}")
+        p.stop(record = false)
+    }
+
+    @Test
     fun rightHandOnlyLetsTheAppPlayTheLeftHand() = runTest {
         val sink = Sink()
         val records = ArrayList<PlayerRecord>()

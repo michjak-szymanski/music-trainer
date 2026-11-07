@@ -1,4 +1,4 @@
-rootProject.name = "music-trainer"
+rootProject.name = "musigium"
 
 pluginManagement {
     repositories {

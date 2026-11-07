@@ -15,7 +15,7 @@ class FolderDiagnoseTest {
     fun diagnose() {
         val dir = File(System.getenv("DIAG_FOLDER") ?: return)
         dir.walkTopDown().filter { it.isFile && it.extension.lowercase() in com.musictrainer.library.MusicFiles.SUPPORTED_EXTENSIONS }.forEach { f ->
-            val r = runCatching { com.musictrainer.library.pieceMeta(f.path, f.name, 0, f.readBytes()).notes }
+            val r = runCatching { com.musictrainer.library.pieceMeta(f.path, f.name, 0, f.readBytes()).let { "\"${it.title}\" ${it.notes} bpm=" + (if (f.extension == "mscz") com.musictrainer.notation.MuseScoreParser.parse(f.readBytes(), "x").bpm else 0) } }
             println("DIAG ${if (r.isSuccess) "OK  " else "FAIL"} ${f.relativeTo(dir)} :: ${r.getOrNull() ?: r.exceptionOrNull()?.let { "${it::class.simpleName}: ${it.message} @ ${it.stackTrace.firstOrNull { s -> s.className.startsWith("com.musictrainer") }}" }}")
         }
     }

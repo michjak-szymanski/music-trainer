@@ -5,7 +5,7 @@
     <uses-feature android:name="android.software.midi" android:required="false" />
 
     <application
-        android:label="Music Trainer"
+        android:label="Musigium"
         android:icon="@mipmap/ic_launcher"
         android:theme="@android:style/Theme.Material.NoActionBar">
         <activity

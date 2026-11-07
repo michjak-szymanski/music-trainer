@@ -8,7 +8,32 @@ enum class LibrarySort(val label: String) {
     TITLE("Title"), TYPE("Type"), DURATION("Duration"), NOTES("Notes"), LAST_PLAYED("Last played"), BEST("Best"),
 }
 
-/** Note player settings (kept separately from the Note feeder's). */
+/** Note player settings (kept separately from the Note finder's). */
+/**
+ * A repeating part of a piece: notes (play steps) [fromStep]..[toStep] when set, else whole bars
+ * [startBar]..[endBar] (1-based, inclusive; also kept up to date for note loops).
+ */
+@Serializable
+data class PieceLoop(
+    val id: Long, val startBar: Int, val endBar: Int, val enabled: Boolean = true, val name: String = "",
+    val fromStep: Int = -1, val toStep: Int = -1,
+) {
+    val byNotes: Boolean get() = fromStep >= 0 && toStep >= fromStep
+    val label: String get() = name.ifBlank { if (startBar == endBar) "Bar $startBar" else "Bars $startBar–$endBar" }
+}
+
+/**
+ * A note or a bookmark in a piece: on a fragment from play step [fromStep] to [toStep] (any notes), or — for
+ * marks made before fragments existed — on a whole bar ([bar], 1-based; also the fragment's first bar).
+ */
+@Serializable
+data class PieceMark(val id: Long, val bar: Int, val text: String, val bookmark: Boolean, val fromStep: Int = -1, val toStep: Int = -1) {
+    val isFragment: Boolean get() = fromStep >= 0
+}
+
+/** Picking a fragment on the sheet: first note chosen ([from]) or not yet. */
+data class FragmentPick(val bookmark: Boolean, val from: Int? = null)
+
 @Serializable
 data class PlayerSettings(
     /** Folders scanned for MIDI files. */
@@ -28,6 +53,8 @@ data class PlayerSettings(
     val soundOutput: String = APP_PIANO,
     /** Opacity of the cursor stripe, percent. */
     val stripeOpacity: Int = 10,
+    /** Tempo for files that don't say their tempo (quarter notes per minute). */
+    val defaultBpm: Int = 120,
     /** Notation look in the Note player. */
     val notationStyle: com.musictrainer.model.NotationStyle = com.musictrainer.model.NotationStyle(),
     /** Sheet zoom in percent, shared by all pieces. */

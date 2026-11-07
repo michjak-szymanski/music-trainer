@@ -49,6 +49,11 @@ class AndroidMidiOutput(context: Context) : MidiOutput {
     /** Messages sent while the device is still opening; flushed once the port is ready. */
     private val pendingMessages = HashMap<String, MutableList<ByteArray>>()
 
+    override fun drum(deviceId: String, note: Int, velocity: Int) {
+        send(deviceId, 0x99, note, velocity) // note on, channel 10
+        send(deviceId, 0x89, note, 0)
+    }
+
     private fun send(id: String, vararg bytes: Int) {
         val data = ByteArray(bytes.size) { bytes[it].toByte() }
         val port = ports[id]

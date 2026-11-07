@@ -14,7 +14,21 @@ interface KeySound {
     fun stop(midi: Int) = Unit
     /** Releases every sounding note (e.g. when playback stops). */
     fun stopAll() = Unit
+    /** A metronome click (not a piano note): [tone] picks the sound, [accent] the bar's first beat, [volume] 0–1. */
+    fun click(tone: ClickTone, accent: Boolean, volume: Float) = Unit
     fun release()
+}
+
+/**
+ * Metronome sounds made by the synth (short percussive clicks, nothing like a piano note): base pitch [hz],
+ * [decayMs], how much noise ([noise], 0–1, the "tick" of the attack) and a second partial ratio for wood.
+ */
+enum class ClickTone(val hz: Double, val decayMs: Double, val noise: Double, val partial: Double) {
+    SOFT(1900.0, 9.0, 0.35, 0.0),
+    BEEP(1320.0, 45.0, 0.0, 0.0),
+    WOOD(950.0, 22.0, 0.12, 2.3),
+    LOW(520.0, 18.0, 0.2, 0.0),
+    TICKTOCK(1250.0, 16.0, 0.15, 2.0),
 }
 
 object NoSound : KeySound {
@@ -111,6 +125,35 @@ class PianoSynth(private val outputRate: Int = SAMPLE_RATE) {
             val x = step * t
             return 0.6 * env * (sin(x) + 0.4 * sin(2 * x) * exp(-t / (tau * 0.5)) + 0.2 * sin(3 * x) * exp(-t / (tau * 0.3)))
         }
+    }
+
+    /** A metronome click: sine (plus an optional wood partial) with a fast exponential decay and a noise tick. */
+    private class ClickVoice(tone: ClickTone, accent: Boolean, private val volume: Double, rate: Int) : Voice() {
+        // Accents sound a fifth higher (tick–tock: the lower tone on normal beats).
+        private val hz = tone.hz * if (accent) 1.5 else 1.0
+        private val step = 2 * PI * hz / rate
+        private val step2 = step * tone.partial
+        private val tau = tone.decayMs / 1000.0 * rate
+        private val noise = tone.noise
+        private val length = (tau * 7).toInt()
+        private var n = 0
+        private var seed = 12345
+        override fun next(): Double {
+            if (n >= length) { done = true; return 0.0 }
+            val t = n++
+            val env = exp(-t / tau) * minOf(1.0, t / 30.0) // ~0.7 ms attack: no hard edge
+            seed = seed * 1103515245 + 12345
+            val white = ((seed ushr 16) and 0x7FFF) / 16384.0 - 1.0
+            val tick = white * exp(-t / (tau * 0.25))
+            val body = sin(step * t) + (if (step2 > 0) 0.5 * sin(step2 * t) * exp(-t / (tau * 0.6)) else 0.0)
+            return volume * env * ((1 - noise) * body + noise * tick) * 0.5
+        }
+    }
+
+    /** Plays a metronome click. */
+    fun click(tone: ClickTone, accent: Boolean, volume: Float) {
+        if (voices.size >= MAX_VOICES) voices.removeAt(0)
+        voices += ClickVoice(tone, accent, volume.toDouble().coerceIn(0.0, 1.0), outputRate)
     }
 
     /** Per-sample decay giving a ~60 dB fade over RELEASE_S. */

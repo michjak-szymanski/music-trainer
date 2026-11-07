@@ -38,18 +38,26 @@ private class DesktopFileStore(private val dir: File) : FileStore {
     }
 }
 
+/**
+ * Where settings and history live: MUSIGIUM_HOME (or the older MUSIC_TRAINER_HOME), else ~/.musigium.
+ * The first start after the rename copies the old ~/.music-trainer folder (which stays as a backup).
+ */
+private fun dataDir(): File {
+    (System.getenv("MUSIGIUM_HOME") ?: System.getenv("MUSIC_TRAINER_HOME"))?.let { return File(it) }
+    val home = File(System.getProperty("user.home"))
+    val dir = File(home, ".musigium")
+    val old = File(home, ".music-trainer")
+    if (!dir.exists() && old.isDirectory) runCatching { old.copyRecursively(dir) }
+    return dir
+}
+
 private val dateFormat = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm").withZone(ZoneId.systemDefault())
 
 fun main() = application {
     val midi = remember { DesktopMidiInput().also { it.start() } }
     val sound = remember { DesktopKeySound() }
     val midiOut = remember { DesktopMidiOutput() }
-    val store = remember {
-        DesktopFileStore(
-            System.getenv("MUSIC_TRAINER_HOME")?.let(::File)
-                ?: File(System.getProperty("user.home"), ".music-trainer")
-        )
-    }
+    val store = remember { DesktopFileStore(dataDir()) }
     val mcp = remember { McpServer(store, System.getProperty("jpackage.app-version") ?: "dev") }
     // The theme chosen in Settings (null until the app reports it): drives the title bar colour.
     val appDark = remember { mutableStateOf<Boolean?>(null) }
@@ -66,6 +74,7 @@ fun main() = application {
             mcp = mcp,
             onDarkTheme = { appDark.value = it },
             touchKeyboard = WindowsTouchKeyboard,
+            openFile = { path -> Thread { runCatching { java.awt.Desktop.getDesktop().open(File(path)) } }.apply { isDaemon = true }.start() },
         )
     }
     Window(
@@ -76,7 +85,7 @@ fun main() = application {
             mcp.stop()
             exitApplication()
         },
-        title = "Music Trainer",
+        title = "Musigium",
         // Window/taskbar icon; without it Windows shows the default Java icon.
         icon = painterResource(Res.drawable.app_icon),
         state = rememberWindowState(width = 1100.dp, height = 780.dp),

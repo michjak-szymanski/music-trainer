@@ -33,7 +33,7 @@ data class PieceMeta(
 )
 
 /** Bump when title/duration/note extraction changes so cached library entries get refreshed. */
-const val META_VERSION = 3
+const val META_VERSION = 6
 
 const val FORMAT_MIDI = "MIDI"
 const val FORMAT_MUSESCORE = "MuseScore"
@@ -41,10 +41,15 @@ const val FORMAT_MUSESCORE = "MuseScore"
 fun formatOf(fileName: String): String =
     if (fileName.substringAfterLast('.', "").lowercase() in MusicFiles.MUSESCORE_EXTENSIONS) FORMAT_MUSESCORE else FORMAT_MIDI
 
-/** Builds the engraved score for a piece from its file bytes. */
-fun buildScore(piece: PieceMeta, bytes: ByteArray): Score =
-    if (piece.format == FORMAT_MUSESCORE) MuseScoreParser.parse(bytes, piece.fileName.substringBeforeLast('.'))
+/** Builds the engraved score for a piece from its file bytes; files without a tempo get [defaultBpm]. */
+fun buildScore(piece: PieceMeta, bytes: ByteArray, defaultBpm: Int = 120): Score {
+    val sc = if (piece.format == FORMAT_MUSESCORE) MuseScoreParser.parse(bytes, piece.fileName.substringBeforeLast('.'))
     else ScoreBuilder.build(MidiParser.parse(bytes), piece.title)
+    return if (sc.tempoFromFile || sc.bpm == defaultBpm) sc else Score(sc.title, sc.key, sc.measures, sc.steps, defaultBpm, tempoFromFile = false)
+}
+
+/** MuseScore's default titles, which say nothing about the piece. */
+internal fun isPlaceholderTitle(t: String): Boolean = t.trim().lowercase() in setOf("untitled score", "untitled", "title", "")
 
 /** Playing time of the file, following its tempo changes. */
 fun MidiData.durationMs(): Long {
@@ -62,23 +67,49 @@ fun MidiData.durationMs(): Long {
     return ms.toLong()
 }
 
+/** Words of instrument / sound names that MIDI tracks often carry instead of a title ("CFX Concert Grand"). */
+private val INSTRUMENT_WORDS = listOf(
+    "piano", "grand", "concert", "cfx", "steinway", "yamaha", "bösendorfer", "bosendorfer", "kawai", "roland", "korg",
+    "rhodes", "wurli", "e.piano", "epiano", "keys", "keyboard", "organ", "harpsichord", "celesta", "clavi", "synth",
+    "strings", "ensemble", "pad", "choir", "bass", "guitar", "violin", "cello", "flute", "drum", "percussion", "sound",
+    "upright", "bright", "acoustic", "electric", "midi", "channel", "ch.", "right", "left", "rh", "lh", "hand",
+)
+
+/** Model codes like "C7", "D274", "SK2" in instrument names. */
+private val MODEL_CODE = Regex("""[a-z]{0,3}\d+[a-z]?""")
+
+/** True when a track name is an instrument or sound rather than the piece's title. */
+internal fun looksLikeInstrument(name: String): Boolean {
+    val words = name.lowercase().split(Regex("""[^\p{L}\p{N}.]+""")).filter { it.length > 1 } // single letters (model names like "Steinway D") say nothing
+    if (words.isEmpty()) return true
+    // Mostly instrument words (and numbers): "CFX Concert Grand", "Grand Piano 1", "Piano RH".
+    val instrumentish = words.count { w -> w.all { it.isDigit() } || MODEL_CODE.matches(w) || INSTRUMENT_WORDS.any { w == it || w.startsWith(it) } }
+    return instrumentish * 2 >= words.size + 1 || instrumentish == words.size
+}
+
+/** "Minuet_BWV_Anhang__in_G_Major.mid" → "Minuet BWV Anhang in G Major". */
+private fun titleFromFileName(fileName: String): String =
+    fileName.substringBeforeLast('.').replace('_', ' ').replace(Regex("""\s+"""), " ").trim()
+
 private val GENERIC_NAMES = setOf("", "untitled", "piano", "acoustic grand piano", "grand piano", "right hand", "left hand", "melody")
 
 fun pieceMeta(id: String, fileName: String, modified: Long, bytes: ByteArray, builtIn: Boolean = false, title: String? = null): PieceMeta {
     if (formatOf(fileName) == FORMAT_MUSESCORE) {
         val score = MuseScoreParser.parse(bytes, fileName.substringBeforeLast('.'))
+        // MuseScore's placeholder title says nothing: use the file name.
+        val scoreTitle = score.title.takeUnless(::isPlaceholderTitle) ?: titleFromFileName(fileName)
         val ticks = score.measures.lastOrNull()?.let { it.start + it.length } ?: 0
         val notes = score.measures.sumOf { m -> m.staves.values.sumOf { list -> list.sumOf { e -> e.notes.count { !it.tieFromPrev } } } }
         val ms = ticks.toLong() * 60_000 / (TICKS_PER_QUARTER.toLong() * score.bpm)
-        return PieceMeta(id, title ?: score.title, fileName, ms, notes, modified, builtIn, FORMAT_MUSESCORE, META_VERSION)
+        return PieceMeta(id, title ?: scoreTitle, fileName, ms, notes, modified, builtIn, FORMAT_MUSESCORE, META_VERSION)
     }
     val midi = MidiParser.parse(bytes)
     val trackTitle = midi.trackNames.toSortedMap().values.firstOrNull { name ->
         val n = name.lowercase()
         n !in GENERIC_NAMES && !n.startsWith("track") && !n.startsWith("staff") && !n.startsWith("musicxml") &&
-            !Regex("""(part|p|instrument|voice)\s*\d*""").matches(n)
+            !Regex("""(part|p|instrument|voice)\s*\d*""").matches(n) && !looksLikeInstrument(n)
     }
-    val fallback = fileName.substringBeforeLast('.').replace('_', ' ').trim()
+    val fallback = titleFromFileName(fileName)
     return PieceMeta(id, title ?: trackTitle ?: fallback, fileName, midi.durationMs(), midi.notes.size, modified, builtIn, FORMAT_MIDI, META_VERSION)
 }
 

@@ -57,7 +57,13 @@ class SystemPrims(val top: Float, val bottom: Float, val startX: Float, val endX
 /** Where a play step is on the page. */
 class StepPos(val system: Int, val x: Float)
 
-class ScoreLayout(val systems: List<SystemPrims>, val height: Float, val stepPos: List<StepPos>, val space: Float)
+/** Where a bar is on the page: its system and the x range of its music. */
+class MeasureBox(val system: Int, val x1: Float, val x2: Float)
+
+class ScoreLayout(
+    val systems: List<SystemPrims>, val height: Float, val stepPos: List<StepPos>, val space: Float,
+    val measureBoxes: List<MeasureBox?> = emptyList(),
+)
 
 private val SHARP_POS = intArrayOf(8, 5, 9, 6, 3, 7, 4) // treble staff positions of F C G D A E B
 private val FLAT_POS = intArrayOf(4, 7, 3, 6, 2, 5, 1) // treble staff positions of B E A D G C F
@@ -80,7 +86,7 @@ fun layoutScore(score: Score, width: Float, space: Float, withTitle: Boolean = t
     val x1 = width - space * 1.2f
     val staffGap = space * 7f
     val systemGap = space * 7.5f
-    val titleH = if (withTitle) space * 5f else space * 1.5f
+    val titleH = if (withTitle) space * 6f else space * 2.5f
     val systemHeight = space * 8f + staffGap + systemGap
     val timeSigW = space * 2.8f
     val clefChangeW = space * 2.4f
@@ -182,6 +188,7 @@ fun layoutScore(score: Score, width: Float, space: Float, withTitle: Boolean = t
 
     val systems = ArrayList<SystemPrims>()
     val stepPos = arrayOfNulls<StepPos>(score.steps.size)
+    val measureBoxes = arrayOfNulls<MeasureBox>(score.measures.size)
 
     // Noteheads by (staff, voice, element sequence number, midi), for ties once everything is laid out.
     class Head(val system: Int, val x: Float, val right: Float, val y: Float, val stemUp: Boolean)
@@ -255,6 +262,7 @@ fun layoutScore(score: Score, width: Float, space: Float, withTitle: Boolean = t
             }
             if (m.showTimeSignature && mi != range.first) timeSignature(m, lx)
             x += lead(mi, mi == range.first)
+            val boxStart = if (mi == range.first) x - space * 0.9f else measureStartX
             val timeX = HashMap<Int, Float>()
             for (i in info.times.indices) {
                 x += info.pre[i]
@@ -263,6 +271,7 @@ fun layoutScore(score: Score, width: Float, space: Float, withTitle: Boolean = t
             }
             x += space * 0.8f
             val barX = if (mi == range.last) x1 else x
+            measureBoxes[mi] = MeasureBox(si, boxStart, barX)
             x = barX
 
             for (staff in Clef.entries) {
@@ -475,5 +484,5 @@ fun layoutScore(score: Score, width: Float, space: Float, withTitle: Boolean = t
 
     val height = (systems.lastOrNull()?.bottom ?: 0f) + space * 2
     val positions = stepPos.mapIndexed { i, p -> p ?: stepPos.take(i).lastOrNull { it != null } ?: StepPos(0, x0) }
-    return ScoreLayout(systems, height, positions, space)
+    return ScoreLayout(systems, height, positions, space, measureBoxes.toList())
 }

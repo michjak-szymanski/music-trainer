@@ -12,6 +12,8 @@ interface MidiOutput {
     fun noteOn(deviceId: String, midi: Int, velocity: Int)
     fun noteOff(deviceId: String, midi: Int)
     fun allNotesOff(deviceId: String)
+    /** A percussion hit on MIDI channel 10 (General MIDI drums), e.g. a wood block for the metronome. */
+    fun drum(deviceId: String, note: Int, velocity: Int) = Unit
     fun close()
 }
 

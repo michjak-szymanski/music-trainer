@@ -1,5 +1,12 @@
 package com.musictrainer.ui
 
+import androidx.compose.ui.input.pointer.isBackPressed
+
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.isAltPressed
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.background
 import com.musictrainer.model.AppMode
 import com.musictrainer.model.AppTheme
@@ -72,12 +79,32 @@ fun App(platform: Platform) {
     }
     LaunchedEffect(dark) { platform.onDarkTheme?.invoke(dark) }
     MaterialTheme(colorScheme = appColorScheme(dark)) {
-        Surface(Modifier.fillMaxSize()) {
+        Surface(
+            Modifier.fillMaxSize()
+                // The mouse's back button: one step back (seen before any child handles the press).
+                .pointerInput(Unit) {
+                    awaitPointerEventScope {
+                        while (true) {
+                            val e = awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Initial)
+                            if (e.type == androidx.compose.ui.input.pointer.PointerEventType.Press && e.buttons.isBackPressed) {
+                                state.navigateBack()
+                                e.changes.forEach { it.consume() }
+                            }
+                        }
+                    }
+                }
+                // Alt+← on the keyboard does the same.
+                .onPreviewKeyEvent { k ->
+                    if (k.type == androidx.compose.ui.input.key.KeyEventType.KeyDown && k.isAltPressed && k.key == androidx.compose.ui.input.key.Key.DirectionLeft) state.navigateBack()
+                    else false
+                },
+        ) {
             Column(Modifier.fillMaxSize().safeDrawingPadding()) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     ModeSelector(state)
-                    PrimaryTabRow(selectedTabIndex = state.screen.ordinal, modifier = Modifier.weight(1f)) {
-                        Screen.entries.forEach { s ->
+                    val tabs = Screen.of(state.mode)
+                    PrimaryTabRow(selectedTabIndex = tabs.indexOf(state.screen).coerceAtLeast(0), modifier = Modifier.weight(1f)) {
+                        tabs.forEach { s ->
                             Tab(
                                 selected = state.screen == s,
                                 onClick = { state.screen = s },
@@ -87,16 +114,61 @@ fun App(platform: Platform) {
                     }
                 }
                 Box(Modifier.weight(1f).fillMaxWidth()) {
-                    Crossfade(targetState = state.screen to state.mode, animationSpec = tween(220)) { (screen, _) ->
-                        val player = state.mode == AppMode.PLAYER
-                        when (screen) {
-                            Screen.PRACTICE -> if (player) PlayerPracticeScreen(state) else PracticeScreen(state)
-                            Screen.HISTORY -> if (player) PlayerHistoryScreen(state) else HistoryScreen(state)
-                            Screen.SETTINGS -> if (player) PlayerSettingsScreen(state) else SettingsScreen(state)
-                        }
+                    Crossfade(targetState = state.screen to state.mode, animationSpec = tween(220)) { (screen, mode) ->
+                        ModeScreen(state, mode, screen)
                     }
                 }
                 MidiStatusBar(state)
+            }
+        }
+    }
+}
+
+/** The Practice / History / Settings page of each mode. */
+@Composable
+private fun ModeScreen(state: AppState, mode: AppMode, screen: Screen) {
+    val rm = mode.rhythmMode
+    when {
+        rm != null -> when (screen) {
+            Screen.PRACTICE, Screen.PROFESSOR, Screen.DOCTOR -> RhythmPracticeScreen(state, rm)
+            Screen.HISTORY -> RhythmHistoryScreen(state, rm)
+            Screen.SETTINGS -> RhythmSettingsScreen(state, rm)
+        }
+        else -> when (mode) {
+            AppMode.PLAYER -> when (screen) {
+                Screen.PRACTICE, Screen.PROFESSOR, Screen.DOCTOR -> PlayerPracticeScreen(state)
+                Screen.HISTORY -> PlayerHistoryScreen(state)
+                Screen.SETTINGS -> PlayerSettingsScreen(state)
+            }
+            AppMode.CHORDS -> when (screen) {
+                Screen.PRACTICE, Screen.PROFESSOR, Screen.DOCTOR -> ChordFinderScreen(state)
+                Screen.HISTORY -> ChordFinderHistoryScreen(state)
+                Screen.SETTINGS -> ChordFinderSettingsScreen(state)
+            }
+            AppMode.CHORD_EAR -> when (screen) {
+                Screen.PRACTICE, Screen.PROFESSOR, Screen.DOCTOR -> ChordEarScreen(state)
+                Screen.HISTORY -> ChordEarHistoryScreen(state)
+                Screen.SETTINGS -> ChordEarSettingsScreen(state)
+            }
+            AppMode.PROGRESSION_EAR -> when (screen) {
+                Screen.PRACTICE, Screen.PROFESSOR, Screen.DOCTOR -> ProgressionScreen(state)
+                Screen.HISTORY -> ProgressionHistoryScreen(state)
+                Screen.SETTINGS -> ProgressionSettingsScreen(state)
+            }
+            AppMode.PERFECT_PITCH -> when (screen) {
+                Screen.PRACTICE, Screen.PROFESSOR, Screen.DOCTOR -> PitchScreen(state)
+                Screen.HISTORY -> PitchHistoryScreen(state)
+                Screen.SETTINGS -> PitchSettingsScreen(state)
+            }
+            AppMode.RELATIVE_PITCH -> when (screen) {
+                Screen.PRACTICE, Screen.PROFESSOR, Screen.DOCTOR -> IntervalScreen(state)
+                Screen.HISTORY -> IntervalHistoryScreen(state)
+                Screen.SETTINGS -> IntervalSettingsScreen(state)
+            }
+            else -> when (screen) {
+                Screen.PRACTICE, Screen.PROFESSOR, Screen.DOCTOR -> PracticeScreen(state)
+                Screen.HISTORY -> HistoryScreen(state)
+                Screen.SETTINGS -> SettingsScreen(state)
             }
         }
     }
@@ -243,7 +315,7 @@ private fun KeysMenu(keys: Int, enabled: Boolean, onSelect: (Int) -> Unit) {
     }
 }
 
-/** Top-left app mode picker: Note feeder / Note player. */
+/** Top-left app mode picker: Note finder / Note player. */
 @Composable
 private fun ModeSelector(state: AppState) {
     var open by remember { mutableStateOf(false) }

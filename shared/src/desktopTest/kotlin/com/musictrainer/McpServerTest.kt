@@ -67,7 +67,7 @@ class McpServerTest {
         assertEquals(200, init.statusCode())
         val res = Json.parseToJsonElement(init.body()).jsonObject["result"]!!.jsonObject
         assertEquals("2025-06-18", res["protocolVersion"]!!.jsonPrimitive.content)
-        assertEquals("music-trainer", res["serverInfo"]!!.jsonObject["name"]!!.jsonPrimitive.content)
+        assertEquals("musigium", res["serverInfo"]!!.jsonObject["name"]!!.jsonPrimitive.content)
 
         assertEquals(202, post("""{"jsonrpc":"2.0","method":"notifications/initialized"}""").statusCode())
 
@@ -86,7 +86,7 @@ class McpServerTest {
         val history = Json.parseToJsonElement(call("get_session_history", """{"mode":"player"}""")).jsonObject
         val s = history["notePlayer"]!!.jsonArray[0].jsonObject
         assertEquals("3", s["rhythmErrors"]!!.jsonPrimitive.content)
-        assertTrue("noteFeeder" !in history)
+        assertTrue("noteFinder" !in history)
 
         val recs = Json.parseToJsonElement(call("list_recordings")).jsonArray
         val id = recs[0].jsonObject["id"]!!.jsonPrimitive.content

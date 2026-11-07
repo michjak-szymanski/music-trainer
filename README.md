@@ -1,4 +1,4 @@
-# Music Trainer
+# Musigium
 
 Sight-reading trainer for MIDI keyboards: Windows, Linux and Android (Kotlin Multiplatform + Compose).
 
@@ -26,6 +26,21 @@ Sight-reading trainer for MIDI keyboards: Windows, Linux and Android (Kotlin Mul
 - The staff scrolls right to left: answered notes stay visible (green = correct, red = wrong with its name),
   with clef-change marks where the clef switched.
   A translucent vertical stripe marks the current note (opacity adjustable in Settings, 0 = off).
+- Note player loops: "Loops ▾" on the play screen — repeat bar ranges (several can be on; ▶ jumps between them),
+  saved per piece; the 🔁 button pauses all looping.
+- Note player, once a piece is open (row under the tabs): 🎓 Professor (the piece's sheet with its form, repeats, hard spots, patterns and chords drawn on it,
+  plus a practice plan with one-click loops) and 🩺 Doctor (your sessions with the piece in a period: a heat map
+  of problem bars and the notes that go wrong on its sheet, the patterns you struggle with, and advice).
+- Notes and bookmarks on a note (click it), shown on the sheet; 🔖 menu while playing,
+  Notes tab on the piece page. Loops start switched on; click a loop on the sheet to turn it on or off.
+- Rhythm dictation: hear a rhythm (as often as you like) and write it value by value; no undo, answer and score when the bars are full.
+- Rhythm imitation: hear a rhythm, tap it back after a count-in (pad, Space or any MIDI key); timing per note in ms.
+- Rhythm play: sight-read a run of bars with the metronome; the staff moves on bar by bar.
+  All rhythm modes: 14 levels, one new concept each (quarters … sixteenth rests), 2/4 3/4 4/4 6/8 9/8 12/8, tempo, bars, questions.
+- Chord finder: play the chord for a symbol (any inversion, optional root in bass / omitted fifth); 8 levels up to ninth chords.
+- Chord identification, Progression identification, Relative pitch (intervals): hear and choose from closed options that grow
+  with the level; wrong answers are corrected and can be compared; focus on your weak spots (or truly random).
+- Perfect pitch: hear a note and click it on a grand staff; level 1 is octave identification, then middle C and more notes up to the whole range.
 - Settings → General (both modes): theme (System / Light / Dark), sound output, Claude/MCP connection.
 - Notation style per mode: music font (Bravura engraved, Leland, Petaluma handwritten), sheet colours
   (theme, paper, high contrast) and "mix it up" (random look each session) to train reading over pattern
@@ -55,7 +70,7 @@ Sight-reading trainer for MIDI keyboards: Windows, Linux and Android (Kotlin Mul
   page's Recordings tab lists and plays them back.
 - Notes of the hand you don't play, and everything in No hands mode, sound through the app piano or a MIDI
   output device (Settings).
-- Own History (all pieces, with charts) and Settings, separate from the Note feeder.
+- Own History (all pieces, with charts) and Settings, separate from the Note finder.
 - MIDI files: tuplets, several voices in one hand and key changes can't be recovered from MIDI (use MuseScore
   files for those). Not yet: MusicXML import, triplets nested inside triplets.
 
@@ -65,10 +80,10 @@ Settings → "Connect Claude (MCP server)" starts a read-only MCP server on `htt
 (local only). Add it to Claude Code with:
 
 ```sh
-claude mcp add --transport http music-trainer http://127.0.0.1:7432/mcp
+claude mcp add --transport http musigium http://127.0.0.1:7432/mcp
 ```
 
-Tools: `list_pieces`, `get_session_history` (Note player and Note feeder), `list_recordings`, `get_recording`
+Tools: `list_pieces`, `get_session_history` (Note player and Note finder), `list_recordings`, `get_recording`
 (events or a base64 MIDI file).
 
 ## Install
@@ -77,10 +92,10 @@ Installers are built into `dist/`:
 
 | Platform | File | How to install |
 |---|---|---|
-| Windows 10/11 (x64) | `MusicTrainer-1.9.3.msi` | Double-click. Installs per user (no admin), adds Start-menu and desktop shortcuts; the last page offers "Launch Music Trainer". |
-| Debian / Ubuntu / Mint (x64) | `music-trainer_1.9.3_amd64.deb` | `sudo apt install ./music-trainer_1.9.3_amd64.deb`, then start "Music Trainer" from the menu (or `/opt/music-trainer/bin/MusicTrainer`). |
-| Other Linux (x64) | `MusicTrainer-1.9.3-linux-x64.tar.gz` | Extract anywhere and run `MusicTrainer/bin/MusicTrainer`. |
-| Android 10+ | `MusicTrainer-1.9.3-android.apk` | Copy to the phone and open it (allow "install unknown apps"). |
+| Windows 10/11 (x64) | `Musigium-2.16.0.msi` | Double-click. Installs per user (no admin), adds Start-menu and desktop shortcuts; the last page offers "Launch Musigium". |
+| Debian / Ubuntu / Mint (x64) | `musigium_2.16.0_amd64.deb` | `sudo apt install ./musigium_2.16.0_amd64.deb`, then start "Musigium" from the menu (or `/opt/musigium/bin/Musigium`). |
+| Other Linux (x64) | `Musigium-2.16.0-linux-x64.tar.gz` | Extract anywhere and run `Musigium/bin/Musigium`. |
+| Android 10+ | `Musigium-2.16.0-android.apk` | Copy to the phone and open it (allow "install unknown apps"). |
 
 **Updating:** just install the newer file over the old one. Windows replaces the installed version automatically
 (your settings and history are kept), `apt install` upgrades the .deb, and Android updates the app in place.
@@ -107,7 +122,7 @@ Requires JDK 17+ (the Gradle wrapper is included).
 Android needs the Android SDK (set `sdk.dir` in `local.properties` or `ANDROID_HOME`). Connect a USB MIDI
 keyboard through an OTG adapter.
 
-Data is stored as JSON in `~/.music-trainer/` on desktop (override with the `MUSIC_TRAINER_HOME`
+Data is stored as JSON in `~/.musigium/` on desktop (copied from `~/.music-trainer/` on first start after the rename; override with the `MUSIGIUM_HOME`
 environment variable) and in the app's private storage on Android.
 
 ## Project layout

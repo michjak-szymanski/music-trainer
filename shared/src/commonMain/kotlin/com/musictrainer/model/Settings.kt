@@ -30,8 +30,23 @@ enum class AppTheme(val label: String) { SYSTEM("System"), LIGHT("Light"), DARK(
 /** The app's modes, picked in the top-left corner. */
 @Serializable
 enum class AppMode(val label: String, val description: String) {
-    FEEDER("Note feeder", "Random notes, one at a time"),
+    FEEDER("Note finder", "Random notes, one at a time"),
     PLAYER("Note player", "Play pieces from MIDI files"),
+    RHYTHM_DICTATION("Rhythm dictation", "Hear a rhythm, write down the note values"),
+    RHYTHM_IMITATION("Rhythm imitation", "Hear a rhythm, tap it back"),
+    RHYTHM_PLAY("Rhythm play", "Sight-read rhythms bar after bar"),
+    CHORDS("Chord finder", "Play the chord for a symbol"),
+    CHORD_EAR("Chord identification", "Hear a chord, name its type"),
+    PROGRESSION_EAR("Progression identification", "Hear a chord progression, name it"),
+    PERFECT_PITCH("Perfect pitch", "Hear a note, find it on the staff"),
+    RELATIVE_PITCH("Relative pitch", "Hear two notes, name the interval"),
+    ;
+    val rhythmMode: com.musictrainer.rhythm.RhythmMode? get() = when (this) {
+        RHYTHM_DICTATION -> com.musictrainer.rhythm.RhythmMode.DICTATION
+        RHYTHM_IMITATION -> com.musictrainer.rhythm.RhythmMode.IMITATION
+        RHYTHM_PLAY -> com.musictrainer.rhythm.RhythmMode.PLAY
+        else -> null
+    }
 }
 
 @Serializable
@@ -39,7 +54,9 @@ data class Settings(
     val appMode: AppMode = AppMode.FEEDER,
     /** Colour theme for the whole app (both modes). */
     val theme: AppTheme = AppTheme.SYSTEM,
-    /** Notation look in the Note feeder. */
+    /** Rhythm, chord and ear modes: play through a connected MIDI device even when "App piano" is chosen. */
+    val trainerMidiOut: Boolean = true,
+    /** Notation look in the Note finder. */
     val notationStyle: NotationStyle = NotationStyle(),
     /** Lowest note that can be asked (MIDI number). Default C2. */
     val lowestMidi: Int = 36,

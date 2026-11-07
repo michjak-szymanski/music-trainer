@@ -69,8 +69,8 @@ class DesktopMidiOutput : MidiOutput {
         open.remove(id)?.let { (d, r) -> runCatching { r.close() }; runCatching { d.close() } }
     }
 
-    private fun send(id: String, command: Int, data1: Int, data2: Int) {
-        val msg = ShortMessage(command, 0, data1, data2)
+    private fun send(id: String, command: Int, data1: Int, data2: Int, channel: Int = 0) {
+        val msg = ShortMessage(command, channel, data1, data2)
         val first = receiver(id) ?: return
         try {
             first.send(msg, -1)
@@ -84,6 +84,10 @@ class DesktopMidiOutput : MidiOutput {
     override fun noteOn(deviceId: String, midi: Int, velocity: Int) = send(deviceId, ShortMessage.NOTE_ON, midi, velocity)
     override fun noteOff(deviceId: String, midi: Int) = send(deviceId, ShortMessage.NOTE_OFF, midi, 0)
     override fun allNotesOff(deviceId: String) = send(deviceId, ShortMessage.CONTROL_CHANGE, 123, 0)
+    override fun drum(deviceId: String, note: Int, velocity: Int) {
+        send(deviceId, ShortMessage.NOTE_ON, note, velocity, channel = 9)
+        send(deviceId, ShortMessage.NOTE_OFF, note, 0, channel = 9)
+    }
 
     @Synchronized
     override fun close() {

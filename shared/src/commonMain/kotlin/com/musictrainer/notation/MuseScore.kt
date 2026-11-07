@@ -130,10 +130,16 @@ object MuseScoreParser {
         var bpm: Int? = null
         var t = 0
         measureNodes.forEachIndexed { i, m ->
-            for ((_, els) in voicesOf(m)) for (el in els) when (el.name) {
-                "TimeSig" -> { val n = el.int("sigN"); val d = el.int("sigD"); if (n != null && d != null && n > 0 && d > 0) meter = Meter(TimeSignature(n, d.coerceAtMost(16))) }
-                "KeySig" -> (el.int("concertKey") ?: el.int("accidental") ?: el.int("key"))?.let { key = KeySignature(it.coerceIn(-7, 7)) }
-                "Tempo" -> if (bpm == null) el.text("tempo")?.toDoubleOrNull()?.let { bpm = (it * 60).roundToInt().coerceIn(20, 400) }
+            for ((_, els) in voicesOf(m)) {
+                // The piece's tempo is a marking at its very start (bar 1, before the first note or rest), as in
+                // MuseScore; later markings (e.g. a hidden slow-down near the end) are not the starting tempo.
+                var atStart = i == 0
+                for (el in els) when (el.name) {
+                    "TimeSig" -> { val n = el.int("sigN"); val d = el.int("sigD"); if (n != null && d != null && n > 0 && d > 0) meter = Meter(TimeSignature(n, d.coerceAtMost(16))) }
+                    "KeySig" -> (el.int("concertKey") ?: el.int("accidental") ?: el.int("key"))?.let { key = KeySignature(it.coerceIn(-7, 7)) }
+                    "Tempo" -> if (bpm == null && atStart) el.text("tempo")?.toDoubleOrNull()?.let { bpm = (it * 60).roundToInt().coerceIn(20, 400) }
+                    "Chord", "Rest", "location" -> atStart = false
+                }
             }
             meters[i] = meter
             keys[i] = key
@@ -236,7 +242,7 @@ object MuseScoreParser {
                 key = k, showKeySignature = prevKey != null && prevKey != k,
             ).also { prevSig = m.signature; prevKey = k }
         }
-        return Score(title, firstKey, measures, steps, bpm ?: 120)
+        return Score(title, firstKey, measures, steps, bpm ?: 120, tempoFromFile = bpm != null)
     }
 
     /** Title text from the first vertical frame (VBox) when there is no workTitle. */

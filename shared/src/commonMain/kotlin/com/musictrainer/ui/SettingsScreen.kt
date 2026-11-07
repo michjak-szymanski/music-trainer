@@ -326,7 +326,7 @@ internal fun McpSection(state: AppState) {
         SwitchRow("Also allow other devices on the local network", s.mcpLan) { state.updateSettings(s.copy(mcpLan = it)) }
         if (s.mcpLan) Text(
             "Anyone on your home/office network can then read this data — there is no password. Connections from " +
-                "outside private networks are refused. Windows may ask once to allow Music Trainer through the firewall.",
+                "outside private networks are refused. Windows may ask once to allow Musigium through the firewall.",
             style = MaterialTheme.typography.bodySmall, color = TimingAmber,
         )
         Text(status, color = if (status.startsWith("Running")) CorrectGreen else MaterialTheme.colorScheme.onSurfaceVariant)
@@ -334,7 +334,7 @@ internal fun McpSection(state: AppState) {
             Text("Add it to Claude Code with:", style = MaterialTheme.typography.bodySmall)
             SelectionContainer {
                 Text(
-                    "claude mcp add --transport http music-trainer ${mcp.url(s.mcpPort)}",
+                    "claude mcp add --transport http musigium ${mcp.url(s.mcpPort)}",
                     fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall,
                 )
             }
@@ -385,6 +385,9 @@ internal fun GeneralSettings(state: AppState) {
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         TextButton(onClick = { state.platform.midiOut.refresh() }) { Text("Refresh MIDI devices") }
+        SwitchRow(
+            "Rhythm, chord and ear modes: play through a connected MIDI device even when App piano is chosen", settings.trainerMidiOut,
+        ) { state.updateSettings(settings.copy(trainerMidiOut = it)) }
     }
     McpSection(state)
 }

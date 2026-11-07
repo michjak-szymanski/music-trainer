@@ -27,6 +27,15 @@ class DesktopKeySound : KeySound {
         }
     }
 
+    override fun click(tone: com.musictrainer.audio.ClickTone, accent: Boolean, volume: Float) {
+        synchronized(lock) {
+            synth.click(tone, accent, volume)
+            if (thread?.isAlive != true && !released) {
+                thread = Thread(::loop, "key-sound").apply { isDaemon = true; start() }
+            }
+        }
+    }
+
     override fun stop(midi: Int) {
         synchronized(lock) { synth.noteOff(midi) }
     }

@@ -28,6 +28,15 @@ class AndroidKeySound : KeySound {
         }
     }
 
+    override fun click(tone: com.musictrainer.audio.ClickTone, accent: Boolean, volume: Float) {
+        synchronized(lock) {
+            synth.click(tone, accent, volume)
+            if (thread?.isAlive != true && !released) {
+                thread = Thread(::loop, "key-sound").apply { start() }
+            }
+        }
+    }
+
     override fun stop(midi: Int) {
         synchronized(lock) { synth.noteOff(midi) }
     }
@@ -66,7 +75,7 @@ class AndroidKeySound : KeySound {
                 .setBufferSizeInBytes(maxOf(minBuffer, PianoSynth.CHUNK * 2 * 4))
                 .build()
         } catch (e: Exception) {
-            Log.w("MusicTrainer", "Key sound unavailable", e)
+            Log.w("Musigium", "Key sound unavailable", e)
             return
         }
         val samples = ShortArray(PianoSynth.CHUNK)

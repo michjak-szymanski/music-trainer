@@ -140,8 +140,8 @@ class McpServer(private val store: FileStore, private val version: String) : Mcp
             "initialize" -> result(id, buildJsonObject {
                 put("protocolVersion", params["protocolVersion"]?.jsonPrimitive?.contentOrNull ?: "2025-06-18")
                 putJsonObject("capabilities") { putJsonObject("tools") {} }
-                putJsonObject("serverInfo") { put("name", "music-trainer"); put("version", version) }
-                put("instructions", "Read-only access to the Music Trainer app: its piece library, practice session history (Note player and Note feeder) and recorded performances.")
+                putJsonObject("serverInfo") { put("name", "musigium"); put("version", version) }
+                put("instructions", "Read-only access to the Musigium app: its piece library, practice session history (Note player and Note finder) and recorded performances.")
             })
             "ping" -> result(id, JsonObject(emptyMap()))
             "tools/list" -> result(id, buildJsonObject { put("tools", toolList()) })
@@ -181,9 +181,9 @@ class McpServer(private val store: FileStore, private val version: String) : Mcp
     private fun toolList() = buildJsonArray {
         add(tool("list_pieces", "List the pieces in the Note player library (user's MIDI/MuseScore files and built-in demos) with duration, note count and practice stats.",
             mapOf("query" to ("string" to "Optional text to filter titles and file names"))))
-        add(tool("get_session_history", "Practice sessions, newest first. Note player sessions have hits, wrong/missed notes, rhythm and note-length errors, accuracy, score, stars, tempo and hands; Note feeder sessions have correct/wrong, accuracy, score and settings.",
+        add(tool("get_session_history", "Practice sessions, newest first. Note player sessions have hits, wrong/missed notes, rhythm and note-length errors, accuracy, score, stars, tempo and hands; Note finder sessions have correct/wrong, accuracy, score and settings.",
             mapOf(
-                "mode" to ("string" to "\"player\", \"feeder\" or \"all\" (default)"),
+                "mode" to ("string" to "\"player\", \"finder\" or \"all\" (default)"),
                 "piece" to ("string" to "Optional piece id or title text (Note player only)"),
                 "limit" to ("integer" to "Maximum sessions per mode (default 50)"),
             )))
@@ -224,15 +224,16 @@ class McpServer(private val store: FileStore, private val version: String) : Mcp
                 }
             }
             "get_session_history" -> {
-                val mode = str("mode") ?: "all"
+                val mode = str("mode")?.let { if (it == "feeder") "finder" else it } ?: "all" // "feeder": old name
                 val piece = str("piece")?.lowercase()
                 val limit = args["limit"]?.jsonPrimitive?.intOrNull ?: 50
                 buildJsonObject {
-                    if (mode != "feeder") putJsonArray("notePlayer") {
+                    if (mode != "finder") putJsonArray("notePlayer") {
                         players.filter { piece == null || it.pieceId.lowercase() == piece || piece in it.title.lowercase() }.take(limit).forEach { r ->
                             add(buildJsonObject {
                                 put("date", iso(r.timestamp)); put("pieceId", r.pieceId); put("title", r.title)
                                 put("hands", r.hands.label); put("style", r.style.label); put("bpm", r.bpm); put("fileBpm", r.fileBpm)
+                                put("setTempoPercent", r.setTempoPercent); if (r.actualTempoPercent > 0) put("actualTempoPercent", r.actualTempoPercent)
                                 put("hits", r.hits); put("wrong", r.wrong); put("missed", r.missed)
                                 put("rhythmErrors", r.rhythmErrors); put("lengthErrors", r.lengthErrors)
                                 put("accuracyPercent", r.accuracyPercent); put("score", r.score); put("stars", r.stars)
@@ -240,7 +241,7 @@ class McpServer(private val store: FileStore, private val version: String) : Mcp
                             })
                         }
                     }
-                    if (mode != "player") putJsonArray("noteFeeder") {
+                    if (mode != "player") putJsonArray("noteFinder") {
                         repo.loadHistory().take(limit).forEach { r ->
                             add(buildJsonObject {
                                 put("date", iso(r.timestamp)); put("correct", r.correct); put("wrong", r.wrong)

@@ -148,6 +148,8 @@ class Score(
     val steps: List<PlayStep>,
     /** Tempo from the file, quarter notes per minute. */
     val bpm: Int,
+    /** False when the file has no tempo marking (then [bpm] is a default). */
+    val tempoFromFile: Boolean = true,
 )
 
 /** (duration, dots) note values that may be written, longest first. */
@@ -372,7 +374,7 @@ object ScoreBuilder {
             }
             ScoreMeasure(mi, mStart, meter, showTimeSignature = prevSig != meter.signature, staves = staves)
         }
-        return Score(title, key, measures, steps, midi.initialBpm)
+        return Score(title, key, measures, steps, midi.initialBpm, tempoFromFile = midi.tempos.isNotEmpty())
     }
 
     private fun buildStaffMeasure(
